@@ -10,7 +10,7 @@ or universally push a user message into a running turn.
 | --- | --- | --- |
 | Any local coding agent | Local file observer; workflow through reported steps | Watcher tested; meaningful UI steps require MCP or supported hooks |
 | Codex, including its IDE panels | codex: .codex/config.toml and passive hooks | Actual CLI startup and local bridge verified; automatic panel discovery pending |
-| Claude Code, terminal or IDE | claude: .mcp.json and passive .claude hooks | Project configuration, hook fixtures, and SDK transport tested; real Claude task pending |
+| Claude Code, terminal or IDE | claude: .mcp.json and passive .claude hooks | Actual CLI tasks verified in all three update modes, with saved diffs, explanations and suggestions; IDE pane verification pending |
 | Cursor local Agent | cursor: .cursor/mcp.json and passive .cursor/hooks.json | Project setup, lifecycle fixtures, and SDK transport tested; real Cursor task/pane pending |
 | VS Code Copilot | vscode or copilot: .vscode/mcp.json | JSONC preservation and SDK transport tested; real Copilot task pending |
 | Gemini CLI | gemini: .gemini/settings.json | Project configuration and SDK transport tested; MCP-only adapter, real task pending |
@@ -249,6 +249,27 @@ new session in the configured personal root. Other roots need their own setup.
 ## Claude lifecycle hooks
 
 Reference: https://code.claude.com/docs/en/hooks
+
+Start Claude in the configured project folder. The bundled `/stef` skill and
+project `.mcp.json` belong to that folder. Use `claude mcp get stef` there to
+check discovery; Pending approval means Claude needs its own `/mcp` approval.
+An existing conversation in another folder does not load this project's setup.
+
+Claude Code 2.1.223 completed real isolated fixes in Every file, Major milestones,
+and Disabled. Every file supplied the exact revision's explanation before running
+tests. Milestones reported the validated outcome without per-file reports. Disabled
+made one initial mode check, then edited and tested without recording progress.
+Developer suggestions reached Claude through MCP. Both designs displayed the saved
+Claude revision and explanation without requesting more context.
+
+Run `make test-claude` with existing authentication in the environment. If your
+API setup lives in Claude settings, run
+`python3 scripts/smoke-claude.py --auth-settings /absolute/path/to/settings.json`.
+This reads only authentication and model environment fields into the test process,
+without loading other user hooks, tools, or MCP servers. It never saves credentials.
+The test uses real agent tokens and a temporary personal fixture. `--startup-only`
+stops after MCP and hook discovery; `--keep-view` retains the isolated companion
+for one hour. Changing the update mode preserves older steps under Show saved history.
 
 examples/claude-hooks.json keeps lifecycle commands asynchronous, with a bounded
 synchronous PostToolUse handler for prompt edit reminders. Replace the executable

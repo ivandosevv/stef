@@ -1,4 +1,4 @@
-# Local validation — 2026-10-30
+# Local validation, 2026-10-30
 
 The 0.3.0 native companion prototype was built and verified on macOS ARM64.
 All working files and fixtures are inside the personal stef project; Go unit tests
@@ -550,3 +550,33 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   requests or JavaScript errors occurred. The fixture stayed under the isolated
   test root and was removed afterward; no synthetic event entered the live chat.
   artifacts/style-visual-review.json and screenshots retain this visual evidence.
+
+## Real Claude Code tasks
+
+Claude Code 2.1.223 used the existing personal API setup to fix small JavaScript
+bugs in isolated fixtures. Only authentication/provider environment fields were
+passed from its settings. User hooks, other MCP servers, global profiles, and
+other projects were excluded. Credentials were never printed or saved.
+
+- Every file captured the exact saved revision and received Claude's explanation
+  before the test command. Read, edit, and test hooks arrived, the actual agent
+  test succeeded, and no pending explanations remained.
+- Major milestones reported the successful validation with a short reason,
+  without capturing file revisions or sending per-file explanations.
+- Disabled allowed the fix and test while recording zero events. Claude checked
+  the mode once and made no subsequent progress reports or check-ins.
+- Developer suggestions reached Claude inside successful MCP tool replies.
+  Distinct Claude session IDs selected their corresponding isolated workflows.
+- A real browser displayed Claude's exact addition diff and explanation in
+  Minimal, Interactive, and Show diff. Switching designs made no feedback
+  requests, created no events, and produced no browser errors.
+- The startup-only run verified actual MCP connection and loaded project hooks,
+  then stopped without claiming a completed task.
+- make check and make test passed, including backend race tests and all 41 UI
+  tests. The generated commands for all 13 clients also passed through the real
+  MCP SDK. This does not certify every named client or its IDE pane.
+
+The opt-in runner is scripts/smoke-claude.py. Results and screenshots are in the
+ignored artifacts directory. Both designs use the retained Claude revision;
+general application behavior previews and other real-client tasks remain separate
+verification work.

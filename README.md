@@ -26,7 +26,8 @@ From a stef checkout, run:
 ./scripts/bootstrap.sh --client codex --repo /absolute/path/to/your/project
 ~~~
 
-Then open the returned URL beside your agent. No stef IDE extension is needed.
+Start your agent in that project and open the returned URL beside it.
+No stef IDE extension is needed.
 Replace codex with your client name, such as claude, cursor, opencode, or hermes.
 Some clients need an import, trust approval, or reload. [Setup guide](docs/CLIENTS.md).
 
