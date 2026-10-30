@@ -3,20 +3,14 @@
 Stay involved while your AI codes.
 
 stef is a local companion that shows what your agent changes and why. Follow
-the workflow, inspect a diff, or send a suggestion while the agent works.
+the workflow, inspect a saved diff, or suggest something while the agent works.
+Choose major milestones, every file, or no updates. Keep the view minimal or
+explore changes in Interactive. Local visuals make no AI calls; agent
+explanations and questions may use tokens.
 
-## What you can do
-
-- Follow connected steps with short explanations from the agent.
-- Click a file to see its saved diff and suggest something about an exact line.
-- Choose major milestones, every file, or turn updates off.
-- Keep the view minimal, or explore changes and supported CSS previews in Interactive.
-- Keep agents separate, or let chosen agents share one workflow.
-
-The workflow and selected file scroll separately. Local browsing and previews
-make no AI calls; explanations and questions may use agent tokens.
-Each agent and subagent gets its own workspace. Share a workspace code to
-coordinate through short recorded explanations; leaving restores private history.
+Each agent and subagent starts privately with a name like **Quiet Fox 2487**,
+generated locally without AI. Start a shared workspace and pass its name to
+chosen agents to work together. Leaving restores your private history.
 
 ## Get started
 
@@ -29,21 +23,17 @@ From a stef checkout, run:
 ./scripts/bootstrap.sh --client codex --repo /absolute/path/to/your/project
 ~~~
 
-Start your agent in that project and open the returned URL beside it.
-No stef IDE extension is needed.
-Replace codex with your client name, such as claude, cursor, opencode, or hermes.
-Some clients need an import, trust approval, or reload. [Setup guide](docs/CLIENTS.md).
-
-If the bundled skill is loaded, you can ask your agent to **enable stef for this project**.
+Replace codex with your client, such as claude, cursor, opencode, or hermes.
+Start your agent there, load its MCP, and ask it to **enable stef for this project**.
+It binds a private workspace before opening its view beside you. No stef IDE
+extension is needed. Some clients need trust, reload, or import. [Setup guide](docs/CLIENTS.md).
 
 For Claude launched from home, run `python3 scripts/connect-claude.py --repo /path/to/personal/project`.
 Restart Claude once to load `/stef` and its MCP from your personal settings.
 
 ## Current status
 
-stef is an early personal project. Thirteen MCP configurations are tested;
-verification inside every real client is still in progress. Public Brew and
-prebuilt downloads are not available yet. General application behavior previews
-are still planned.
+stef is an early personal project. Client configurations are tested; real-client
+verification continues. Public Brew and prebuilt downloads are not available yet.
 
 [Getting started](docs/GETTING_STARTED.md) · [Validation](docs/VALIDATION.md) · [Roadmap](docs/ROADMAP.md)

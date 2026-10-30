@@ -1,15 +1,26 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import type { Workspace } from '../src/lib';
 
 const report = (session: string, agent: string, node: string, summary: string) => ({ session_id: session, agent_id: agent, node_name: node, action: 'modified', summary, why: agent + ' keeps this change scoped to the selected workflow.', status: 'ready' });
 async function activate(request: APIRequestContext, session: string) {
   const response = await request.post('/api/sessions/activate', { data: { session_id: session } });
   expect(response.ok()).toBe(true);
 }
+async function namedWorkspace(request: APIRequestContext, id: string): Promise<Workspace & { name: string }> {
+  const catalog = await (await request.get('/api/workspaces')).json() as { workspaces: Workspace[] };
+  const workspace = catalog.workspaces.find(room => room.workspace_id === id);
+  expect(workspace?.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+ \d+$/);
+  if (!workspace?.name) throw new Error('Workspace has no readable name.');
+  expect(workspace.name).not.toContain(id);
+  return { ...workspace, name: workspace.name };
+}
 
 test('two pinned agent views stay independent across live activity, reconnect and Clear', async ({ page, context, request }) => {
   const first = 'view-private-codex', second = 'view-private-claude';
   await activate(request, first);
   await activate(request, second);
+  const firstRoom = await namedWorkspace(request, first), secondRoom = await namedWorkspace(request, second);
+  expect(firstRoom.name).not.toBe(secondRoom.name);
   await request.post('/api/events', { data: report(first, 'codex', 'codex.ts', 'Fix Codex boundary') });
   await request.post('/api/events', { data: report(second, 'claude', 'claude.ts', 'Fix Claude boundary') });
   const peer = await context.newPage();
@@ -26,13 +37,16 @@ test('two pinned agent views stay independent across live activity, reconnect an
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
   await expect(peer.getByTestId('workflow-step')).toHaveCount(1);
   await page.reload();
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toHaveText(firstRoom.name + '⌄');
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
   await page.getByRole('button', { name: 'Clear this chat’s workflow' }).click();
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   await expect(peer.getByRole('button', { name: 'Fix Claude boundary', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Workspaces and sharing' })).toContainText(second);
-  await page.getByRole('button', { name: second, exact: true }).click();
+  const picker = page.getByRole('dialog', { name: 'Workspaces and sharing' });
+  await expect(picker).toContainText(secondRoom.name);
+  await expect(picker).not.toContainText(second);
+  await page.getByRole('button', { name: secondRoom.name, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Fix Claude boundary', exact: true })).toBeVisible();
   await expect(page).toHaveURL(new RegExp('session_id=' + second));
   await peer.close();
@@ -42,6 +56,7 @@ test('agents explicitly join a shared workflow and recover private histories whe
   const first = 'share-origin-codex', second = 'share-origin-claude';
   await activate(request, first);
   await activate(request, second);
+  const firstRoom = await namedWorkspace(request, first), secondRoom = await namedWorkspace(request, second);
   await request.post('/api/events', { data: report(first, 'codex', 'private-one.ts', 'Keep first private') });
   await request.post('/api/events', { data: report(second, 'claude', 'private-two.ts', 'Keep second private') });
   const peer = await context.newPage();
@@ -51,16 +66,25 @@ test('agents explicitly join a shared workflow and recover private histories whe
   await expect(peer.getByRole('button', { name: 'Keep second private', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await page.getByRole('button', { name: 'Start shared workspace', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toHaveText('Shared⌄');
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   const catalog = await (await request.get('/api/workspaces')).json();
   const room = catalog.workspaces.find((workspace: { shared: boolean; members: string[] }) => workspace.shared && workspace.members.includes(first));
   expect(room).toBeTruthy();
+  await namedWorkspace(request, room.workspace_id);
+  await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toHaveText(room.name + '⌄');
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await expect(page.getByRole('button', { name: room.name, exact: true })).toHaveAttribute('title', room.name + ' · Shared with ' + firstRoom.name);
+  await page.getByRole('button', { name: 'Copy sharing name', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(room.name);
+  await expect(page.getByRole('dialog', { name: 'Workspaces and sharing' }).getByRole('status')).toContainText(room.name);
+  await expect(page.getByRole('dialog', { name: 'Workspaces and sharing' })).not.toContainText(room.workspace_id);
+  await page.keyboard.press('Escape');
   await peer.getByRole('button', { name: 'Workspace', exact: true }).click();
   await peer.getByRole('button', { name: 'Join shared workspace', exact: true }).click();
-  await peer.getByRole('textbox', { name: 'Sharing ID', exact: true }).fill(room.workspace_id);
+  await peer.getByRole('textbox', { name: 'Sharing name', exact: true }).fill(room.name);
   await peer.getByRole('button', { name: 'Join', exact: true }).click();
-  await expect(peer.getByRole('button', { name: 'Workspace', exact: true })).toHaveText('Shared⌄');
+  await expect(peer.getByRole('button', { name: 'Workspace', exact: true })).toHaveText(room.name + '⌄');
   await expect(peer.getByTestId('workflow-step')).toHaveCount(0);
   await request.post('/api/events', { data: report(first, 'codex', 'shared.ts', 'Build shared contract') });
   await expect(page.getByRole('button', { name: 'Build shared contract', exact: true })).toBeVisible();
@@ -72,7 +96,7 @@ test('agents explicitly join a shared workflow and recover private histories whe
   await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('claude');
   await expect(page.getByTestId('workflow-arrow')).toHaveCount(1);
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
-  await page.locator('.workspace-choice[title="' + room.workspace_id + '"]').click();
+  await page.getByRole('button', { name: room.name, exact: true }).click();
   await expect(page).toHaveURL(new RegExp('session_id=' + room.workspace_id));
   await page.getByRole('button', { name: 'Workspace', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Workspaces and sharing' })).toContainText('Viewing this workflow.');
@@ -80,17 +104,18 @@ test('agents explicitly join a shared workflow and recover private histories whe
   await expect(page.getByRole('button', { name: 'Join shared workspace', exact: true })).toHaveCount(0);
   const afterViewing = await (await request.get('/api/workspaces')).json();
   expect(afterViewing.workspaces.find((workspace: { workspace_id: string }) => workspace.workspace_id === room.workspace_id).members).toHaveLength(2);
-  await page.locator('.workspace-choice[title="' + first + '"]').click();
+  await page.getByRole('button', { name: firstRoom.name, exact: true }).click();
   await expect(page).toHaveURL(new RegExp('session_id=' + first));
   await peer.getByRole('button', { name: 'Workspace', exact: true }).click();
   await peer.getByRole('button', { name: 'Return to private', exact: true }).click();
-  await expect(peer.getByRole('button', { name: 'Workspace', exact: true })).toHaveText('Private⌄');
+  await expect(peer.getByRole('button', { name: 'Workspace', exact: true })).toHaveText(secondRoom.name + '⌄');
   await expect(peer.getByRole('button', { name: 'Keep second private', exact: true })).toBeVisible();
   await expect(peer.getByRole('button', { name: 'Build shared contract', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Clear this chat’s workflow' }).click();
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   await expect(peer.getByRole('button', { name: 'Keep second private', exact: true })).toBeVisible();
   await peer.reload();
+  await expect(peer.getByRole('button', { name: 'Workspace', exact: true })).toHaveText(secondRoom.name + '⌄');
   await expect(peer.getByRole('button', { name: 'Keep second private', exact: true })).toBeVisible();
   await peer.close();
 });

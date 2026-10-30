@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { Workspace } from '../lib';
+  import { workspaceName, type Workspace } from '../lib';
   let { origin, workspaceID, workspaces, connected, onselect, onchange }: {
     origin: string; workspaceID: string; workspaces: Workspace[]; connected: boolean;
     onselect: (origin: string) => void;
@@ -15,11 +15,12 @@
   let trigger: HTMLButtonElement;
   let menu = $state<HTMLDivElement>();
   const current = $derived(workspaces.find(workspace => workspace.workspace_id === workspaceID));
+  const currentName = $derived(workspaceName(current));
   const shared = $derived(Boolean(current?.shared));
   const choices = $derived(workspaces.filter(workspace => !workspace.shared || workspace.members.length > 0));
   const canConfigure = $derived(Boolean(origin && current && (current.shared ? current.members.includes(origin) : origin === current.workspace_id)));
   const sharingFor = (id: string) => workspaces.find(room => room.shared && room.members.includes(id));
-  const brief = (value: string) => value.length > 28 ? value.slice(0, 25) + '…' : value;
+  const memberNames = (workspace: Workspace) => workspace.members.map(id => workspaceName(workspaces.find(room => room.workspace_id === id), id)).join(', ');
   function close() { open = false; joinOpen = false; status = ''; trigger?.focus(); }
   async function toggle() { open = !open; status = ''; if (open) { await tick(); menu?.querySelector<HTMLElement>('button[aria-pressed="true"]')?.focus(); } }
   async function change(action: 'create' | 'join' | 'leave') {
@@ -29,9 +30,10 @@
     catch (cause) { status = cause instanceof Error ? cause.message : 'Could not change sharing.'; }
     finally { busy = false; }
   }
-  async function copyID() {
-    try { await navigator.clipboard.writeText(workspaceID); status = 'Copied. Ask the other agent to join this ID.'; }
-    catch { status = 'Copy this ID: ' + workspaceID; }
+  async function copyName() {
+    const invitation = current?.name?.trim() || workspaceID;
+    try { await navigator.clipboard.writeText(invitation); status = 'Copied. Ask another agent to join ' + invitation + '.'; }
+    catch { status = 'Share ' + invitation + ' with another agent.'; }
   }
   function navigate(event: KeyboardEvent) {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
@@ -46,20 +48,20 @@
 </script>
 
 <div class="workspace" bind:this={container}>
-  <button class="workspace-trigger" bind:this={trigger} onclick={toggle} aria-label="Workspace" aria-haspopup="dialog" aria-expanded={open} title={shared ? 'Shared workflow' : 'Private workflow'}>{shared ? 'Shared' : 'Private'}<span aria-hidden="true">⌄</span></button>
+  <button class="workspace-trigger" bind:this={trigger} onclick={toggle} aria-label="Workspace" aria-haspopup="dialog" aria-expanded={open} title={currentName + ' · ' + (shared ? 'Shared' : 'Private')}><span class="workspace-name">{currentName}</span><span aria-hidden="true">⌄</span></button>
   {#if open}
     <div class="workspace-menu" bind:this={menu} role="dialog" aria-label="Workspaces and sharing" tabindex="-1" onkeydown={navigate}>
       <div class="workspace-list">
         {#each choices as workspace}
-          <button class="workspace-choice" aria-pressed={workspace.workspace_id === origin} title={workspace.workspace_id} disabled={busy} onclick={() => { onselect(workspace.workspace_id); close(); }}>
-            <span>{workspace.shared ? 'Shared' : brief(workspace.workspace_id)}<span aria-hidden="true">{workspace.workspace_id === origin ? '✓' : ''}</span></span>
-            {#if workspace.shared}<small>{workspace.members.length} agents · {brief(workspace.workspace_id)}</small>{:else if sharingFor(workspace.workspace_id)}<small>Sharing this workflow</small>{/if}
+          <button class="workspace-choice" aria-label={workspaceName(workspace)} aria-pressed={workspace.workspace_id === origin} title={workspaceName(workspace) + ' · ' + (workspace.shared ? 'Shared with ' + memberNames(workspace) : sharingFor(workspace.workspace_id) ? 'Sharing ' + workspaceName(sharingFor(workspace.workspace_id)) : 'Private')} disabled={busy} onclick={() => { onselect(workspace.workspace_id); close(); }}>
+            <span>{workspaceName(workspace)}<span aria-hidden="true">{workspace.workspace_id === origin ? '✓' : ''}</span></span>
+            <small>{workspace.shared ? 'Shared · ' + workspace.members.length + (workspace.members.length === 1 ? ' agent' : ' agents') : sharingFor(workspace.workspace_id) ? 'In ' + workspaceName(sharingFor(workspace.workspace_id)) : 'Private'}</small>
           </button>
         {/each}
       </div>
       <div class="workspace-sharing">
         {#if shared}
-          <button onclick={copyID} disabled={busy}>Copy sharing ID</button>
+          <button onclick={copyName} disabled={busy}>Copy sharing name</button>
           {#if canConfigure}<button onclick={() => change('leave')} disabled={busy || !connected}>Return to private</button>{/if}
         {:else if canConfigure}
           <button onclick={() => change('create')} disabled={busy || !connected || !origin}>Start shared workspace</button>
@@ -67,7 +69,7 @@
         {#if canConfigure}<button onclick={() => { joinOpen = !joinOpen; status = ''; }} disabled={busy || !connected}>Join shared workspace</button>{/if}
         {#if joinOpen}
           <form onsubmit={event => { event.preventDefault(); void change('join'); }}>
-            <input aria-label="Sharing ID" placeholder="Sharing ID" bind:value={joinID} maxlength="160" />
+            <input aria-label="Sharing name" placeholder="Quiet Fox 248" bind:value={joinID} maxlength="160" />
             <button disabled={busy || !joinID.trim() || !connected}>Join</button>
           </form>
         {/if}
@@ -80,10 +82,11 @@
 <svelte:window onpointerdown={event => { if (open && event.target instanceof Node && !container.contains(event.target)) { open = false; joinOpen = false; } }} />
 
 <style>
-  .workspace { position: relative; }
-  .workspace-trigger { display: flex; align-items: center; gap: 5px; border: 0; background: none; color: var(--control); border-radius: 5px; padding: 6px 4px; font-size: 10px; }
+  .workspace { position: relative; min-width: 0; }
+  .workspace-trigger { display: flex; align-items: center; gap: 5px; min-width: 0; width: 100%; border: 0; background: none; color: var(--control); border-radius: 5px; padding: 6px 4px; font-size: 10px; }
   .workspace-trigger:hover { color: var(--text); }
-  .workspace-menu { position: absolute; z-index: 8; left: 0; top: calc(100% + 5px); width: min(250px, calc(100vw - 40px)); padding: 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); box-shadow: 0 4px 16px #00000016; }
+  .workspace-name { min-width: 0; max-width: 130px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .workspace-menu { position: absolute; z-index: 8; left: 0; top: calc(100% + 5px); width: min(250px, calc(100vw - 80px)); padding: 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); box-shadow: 0 4px 16px #00000016; }
   .workspace-list { max-height: 180px; overflow-y: auto; overscroll-behavior: contain; }
   .workspace-choice { display: block; width: 100%; padding: 8px; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; text-align: left; }
   .workspace-choice > span { display: flex; justify-content: space-between; gap: 8px; color: var(--text); overflow-wrap: anywhere; }

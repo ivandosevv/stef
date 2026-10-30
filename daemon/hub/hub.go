@@ -48,14 +48,18 @@ type Hub struct {
 	memberships       map[string]string
 	shared            map[string]bool
 	workspaceSettings map[string]workspaceSetting
+	workspaceNames    map[string]string
 	originFrom        map[string]uint64
 	assigned          map[string]string
 	scopedClients     map[chan Message]string
 }
 
 func New(repo, journalPath string) (*Hub, error) {
-	h := &Hub{repo: repo, active: "local", sessions: map[string][]telemetry.Event{"local": {}}, events: make([]telemetry.Event, 0), clients: make(map[chan Message]struct{}), claims: make(map[string]map[string]time.Time), offered: make(map[string]map[string]bool), updateMode: telemetry.UpdatesFiles, memberships: make(map[string]string), shared: make(map[string]bool), workspaceSettings: make(map[string]workspaceSetting), originFrom: make(map[string]uint64), assigned: make(map[string]string), scopedClients: make(map[chan Message]string)}
+	h := &Hub{repo: repo, active: "local", sessions: map[string][]telemetry.Event{"local": {}}, events: make([]telemetry.Event, 0), clients: make(map[chan Message]struct{}), claims: make(map[string]map[string]time.Time), offered: make(map[string]map[string]bool), updateMode: telemetry.UpdatesFiles, memberships: make(map[string]string), shared: make(map[string]bool), workspaceSettings: make(map[string]workspaceSetting), workspaceNames: make(map[string]string), originFrom: make(map[string]uint64), assigned: make(map[string]string), scopedClients: make(map[chan Message]string)}
 	if journalPath == "" {
+		if err := h.migrateWorkspaceNamesLocked(); err != nil {
+			return nil, err
+		}
 		return h, nil
 	}
 	file, err := os.OpenFile(journalPath, os.O_CREATE|os.O_RDWR, 0600)
@@ -151,6 +155,10 @@ func New(repo, journalPath string) (*Hub, error) {
 		}
 	}
 	h.journal = file
+	if err := h.migrateWorkspaceNamesLocked(); err != nil {
+		file.Close()
+		return nil, err
+	}
 	return h, nil
 }
 
@@ -182,6 +190,9 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 		return e, err
 	}
 	if err := h.validateContextLocked(e); err != nil {
+		return e, err
+	}
+	if err := h.ensureWorkspaceNameLocked(e.SessionID); err != nil {
 		return e, err
 	}
 	now := time.Now().UTC()

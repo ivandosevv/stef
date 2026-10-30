@@ -34,8 +34,13 @@ export const isUpdateMode = (value: unknown): value is UpdateMode => ['milestone
 
 export interface Workspace {
   workspace_id: string;
+  name?: string;
   shared: boolean;
   members: string[];
+}
+
+export function workspaceName(workspace?: Workspace, fallback = 'Private'): string {
+  return workspace?.name?.trim() || workspace?.workspace_id || fallback;
 }
 
 export type StreamMessage =

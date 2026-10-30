@@ -34,8 +34,11 @@ compiling a target is distinct from verifying that target's editor/client. No pu
 available yet, so `brew install stef` is not a working public installation command.
 
 Workflow histories are scoped to stable chat IDs. Codex/Claude lifecycle signals
-select new/resumed chats when loaded; otherwise use MCP set_session once and
-retain its ID in that conversation. Clear affects only that chat. MCP transport
+select new/resumed chats when loaded; otherwise bind through MCP set_session
+once when enabling or starting/resuming the chat. Explicit binding starts
+privately; resume_shared=true retains prior sharing only when requested. Normal
+check-ins do not reset sharing. Retain the returned worker ID in that
+conversation. Clear affects the selected workspace. MCP transport
 connection IDs are independent of chat identity. An idle panel switch that the
 client never reports cannot select a saved workflow automatically.
 
@@ -120,9 +123,12 @@ The skill uses stef --enable --client <client> --repo <authorized-root> to
 configure and launch from the current agent. stef --list-clients returns all
 documented names, configuration paths, and remaining setup steps. It selects/reuses a loopback port
 and starts a resident engine immediately; no separate agent CLI or stef VSIX is
-needed. In VS Code, add --view ide and open the returned view_url in the existing
-integrated browser. The skill uses a host browser tool if available, otherwise
-supplies the URL; CLI startup alone does not open a tab. The presentation choice
+needed. In VS Code, add --view ide and bind the worker with set_session before
+opening its view in the existing integrated browser. Open the setup
+endpoint plus set_session's returned view_path instead of the unscoped setup
+view_url. Receipts also include workspace_name. The skill uses a host browser
+tool if available, otherwise supplies that scoped URL; CLI startup alone does
+not open a tab. Complete MCP trust/reload first if the tools are unavailable. The presentation choice
 is remembered independently of the MCP client. Codex loads newly configured MCP
 through Restart extension; Claude Code
 uses its /mcp approval/reconnect controls. Other clients follow next_step in
@@ -305,8 +311,11 @@ explicitly; use examples/generic-activity.json for the neutral contract.
 
 Call set_session once per new or resumed worker with the original stable chat
 ID and a unique agent_id. Retain that pair for set_session on resume and use
-its returned worker session_id for other tools. Every agent and subagent gets
-its own workspace by default. Give subagents distinct agent IDs before they
+its returned worker session_id for other tools. Each explicit set_session
+starts privately, including when resuming a previously shared chat. Set
+resume_shared=true only to explicitly retain that earlier sharing; normal
+get_state and report calls keep active membership. Do not rebind each turn.
+Every agent and subagent gets its own workspace by default. Give subagents distinct agent IDs before they
 report. MCP cannot infer anonymous workers on a shared transport, and a
 transport fallback does not identify a resumed chat.
 Trusted lifecycle startup metadata provides an exact worker session_id and
@@ -315,9 +324,18 @@ the binding call, then use both metadata IDs in reports and check-ins. Claude's
 documented optional agent_id distinguishes subagent callbacks when supplied;
 callbacks without worker identity cannot distinguish anonymous subagents.
 
-To cooperate, call set_workspace with action=create and give the returned
-workspace_id to chosen peers. Each peer explicitly joins with action=join and
-that code. Reports keep their returned worker session_id, their author, and their saved
+Every workspace receives a readable name such as Quiet Fox 2487, generated
+from local word lists and numbers without AI. Names remain stable across
+restart, resume, Clear, and leaving a shared workspace. Existing histories gain
+names without losing their data. Internal IDs still handle routing. After
+binding, open the verified endpoint plus the returned view_path; it stays
+pinned to this worker.
+
+To cooperate, call set_workspace with action=create and give its returned name
+to chosen peers. Each peer explicitly joins with action=join and that name in
+workspace_id. Invitation IDs remain accepted; names are matched ignoring case
+and surrounding whitespace. Only shared workspaces can be joined. Reports keep
+their returned worker session_id, their author, and their saved
 revision. A shared workspace starts empty; private history is not imported.
 action=leave restores the worker's private history. Joining and leaving persist
 across engine restart. The workspace picker selects which workflow to inspect;

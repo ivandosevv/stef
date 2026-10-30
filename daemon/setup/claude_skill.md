@@ -18,24 +18,34 @@ Use Claude's /mcp menu to approve or reconnect stef. Newly written configuration
 may require restarting Claude from this project. A project skill and MCP entry
 apply to that project, not other shell directories. Honor the client's trust
 controls. Do not write global profiles automatically.
-Open the returned view_url using the host's built-in browser capability if
-available; otherwise give the localhost link for the existing browser tab.
+Bind this worker with set_session before opening the view. Use {{.Endpoint}}
+plus the returned view_path, not the unscoped setup view_url. Open it using the
+host's built-in browser capability if available; otherwise give that localhost
+link for the existing browser tab. Complete Claude's trust/reload step first
+if its tools are not loaded.
 The engine being ready does not mean the host has opened the view.
 
-At the first task in a new or resumed chat, call set_session with the originally
-chosen stable chat ID as session_id and this worker's unique agent_id. Retain
+When enabling stef or starting/resuming a chat, call set_session once with the
+originally chosen stable chat ID as session_id and this worker's unique agent_id. Retain
 that pair for set_session on resume and use the returned worker session_id for
 every other tool. When a trusted hook supplies worker metadata,
 bind its exact session_id with set_session omitting agent_id, then use the hook's
-agent_id on reports. Otherwise create a unique ID and retain it. Then
-call get_state once at task start and follow update_mode and reporting_instructions.
+agent_id on reports. Otherwise create a unique ID and retain it. Every explicit
+set_session starts privately, including resumed shared chats. Set
+resume_shared=true only when the user asks to retain prior sharing. Normal
+check-ins and reports keep active sharing; do not bind again every turn.
+Receipts include workspace_name and view_path. Names such as Quiet Fox 2487
+are generated locally from word lists and numbers and remain stable on resume
+and Clear, without AI calls. Then call get_state once at task start and follow
+update_mode and reporting_instructions.
 Each agent and subagent has a private workspace by default. Give subagents their
 own unique agent_id and set_session call; MCP cannot distinguish anonymous
 workers sharing a transport. Do not give them the parent's returned session_id.
 
 For explicit cooperation, set_workspace action=create returns a shared
-workspace_id. Give its code to the chosen workers and ask each to call action=join
-with that workspace_id. Keep using each worker's returned session_id for all
+workspace_id and name. Give the readable name to chosen workers and
+ask each to call action=join with that name in workspace_id; its invitation ID
+is also accepted. Keep using each worker's returned session_id for all
 reports. action=leave restores its private history without copying peer steps.
 Shared get_state includes bounded recorded explanations and authors at natural
 check-ins. Sharing never merges hidden reasoning or model chats, and does not

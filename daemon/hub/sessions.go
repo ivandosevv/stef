@@ -12,6 +12,7 @@ type sessionControl struct {
 	SessionID     string               `json:"session_id,omitempty"`
 	UpdateMode    telemetry.UpdateMode `json:"update_mode,omitempty"`
 	WorkspaceID   string               `json:"workspace_id,omitempty"`
+	WorkspaceName string               `json:"workspace_name,omitempty"`
 	Action        string               `json:"action,omitempty"`
 	ObservationID string               `json:"observation_id,omitempty"`
 	CapturedEvent *telemetry.Event     `json:"captured_event,omitempty"`
@@ -77,6 +78,9 @@ func (h *Hub) broadcast(message Message) {
 func (h *Hub) activateLocked(id string) error {
 	if id == h.active {
 		return nil
+	}
+	if err := h.ensureWorkspaceNameLocked(id); err != nil {
+		return err
 	}
 	data, _ := json.Marshal(sessionControl{Control: "activate", SessionID: id})
 	if err := h.persist(data); err != nil {

@@ -76,6 +76,8 @@ type StateEvent struct {
 }
 type State struct {
 	WorkspaceID           string                    `json:"workspace_id"`
+	WorkspaceName         string                    `json:"workspace_name"`
+	ViewPath              string                    `json:"view_path"`
 	Shared                bool                      `json:"shared"`
 	Members               []string                  `json:"members"`
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
@@ -106,11 +108,15 @@ type backend interface {
 	workspace(context.Context, hub.WorkspaceInput) (hub.Workspace, error)
 }
 type SessionInput struct {
-	AgentID   string `json:"agent_id,omitempty" jsonschema:"stable unique worker ID; use a distinct ID for every subagent"`
-	SessionID string `json:"session_id" jsonschema:"stable ID for this chat; reuse the same ID when resuming it"`
+	AgentID      string `json:"agent_id,omitempty" jsonschema:"stable unique worker ID; use a distinct ID for every subagent"`
+	SessionID    string `json:"session_id" jsonschema:"stable ID for this chat; reuse the same ID when resuming it"`
+	ResumeShared bool   `json:"resume_shared,omitempty" jsonschema:"explicitly keep previously chosen sharing; default start restores the private workflow"`
 }
 type SessionReceipt struct {
 	WorkspaceID           string               `json:"workspace_id"`
+	WorkspaceName         string               `json:"workspace_name"`
+	Shared                bool                 `json:"shared"`
+	ViewPath              string               `json:"view_path"`
 	SessionID             string               `json:"session_id"`
 	UpdateMode            telemetry.UpdateMode `json:"update_mode"`
 	UpdatesFrom           string               `json:"updates_from"`
@@ -133,8 +139,21 @@ func (b localBackend) changes(_ context.Context, input ChangesInput) (ChangesRec
 	return ReportChanges(b.hub, input)
 }
 func (b localBackend) activate(_ context.Context, id string) (SessionReceipt, error) {
-	snapshot, err := b.hub.RegisterSession(id)
-	return SessionReceipt{SessionID: id, WorkspaceID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, err
+	return ActivateSession(b.hub, id)
+}
+
+// ActivateSession registers an origin without changing explicit sharing.
+// Only the set_session tool applies the default-private startup policy.
+func ActivateSession(h *hub.Hub, id string) (SessionReceipt, error) {
+	snapshot, err := h.RegisterSession(id)
+	if err != nil {
+		return SessionReceipt{}, err
+	}
+	workspace := workspaceDetails(h, snapshot.SessionID)
+	return SessionReceipt{SessionID: id, WorkspaceID: snapshot.SessionID, WorkspaceName: workspace.Name, Shared: workspace.Shared, ViewPath: companionPath(id), UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, nil
+}
+func companionPath(origin string) string {
+	return "/?companion=1&session_id=" + url.QueryEscape(origin)
 }
 func (b localBackend) workspace(_ context.Context, input hub.WorkspaceInput) (hub.Workspace, error) {
 	return b.hub.ConfigureWorkspace(input)
@@ -151,7 +170,7 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	}
 	workspace := workspaceDetails(h, s.SessionID)
 	if s.UpdateMode == telemetry.UpdatesDisabled {
-		return State{SessionID: origin, WorkspaceID: s.SessionID, Shared: workspace.Shared, Members: workspace.Members, Repo: s.Repo, UpdateMode: s.UpdateMode, UpdatesFrom: s.UpdatesFrom, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
+		return State{SessionID: origin, WorkspaceID: s.SessionID, WorkspaceName: workspace.Name, ViewPath: companionPath(origin), Shared: workspace.Shared, Members: workspace.Members, Repo: s.Repo, UpdateMode: s.UpdateMode, UpdatesFrom: s.UpdatesFrom, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
 	}
 	visible := make([]telemetry.Event, 0, len(s.Events))
 	from, _ := strconv.ParseUint(s.UpdatesFrom, 10, 64)
@@ -168,6 +187,8 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	state := compact(s.Repo, visible, limit, workspace.Shared)
 	state.SessionID = origin
 	state.WorkspaceID = s.SessionID
+	state.WorkspaceName = workspace.Name
+	state.ViewPath = companionPath(origin)
 	state.Shared = workspace.Shared
 	state.Members = workspace.Members
 	state.UpdateMode = s.UpdateMode
@@ -204,8 +225,8 @@ func compact(repo string, events []telemetry.Event, limit int, shared ...bool) S
 func newServer(b backend) *sdk.Server {
 	no := false
 	identities := newIdentityBindings()
-	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. Each worker has its own private workflow by default. Call set_session once with the original stable chat ID and unique agent_id; retain the returned session_id for all other tools. Every subagent uses a distinct agent_id. Only share when requested: set_workspace create returns an ID; each cooperating worker joins using its own session_id and that workspace_id; leave restores private history. Shared get_state includes brief peer reasons at natural check-ins. Use trusted hook session IDs verbatim when supplied. MCP reconnects alone cannot identify resumed chats. After editing, include changed_paths with only this worker actual saved paths when trusted hooks provide no exact IDs. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: prepare brief reasons with the edit; after EACH edit tool, use hook pending IDs or get_state once with settle_ms=300 and report_changes for every own exact change_id before another edit, test, or final reply. Sequence edit, check-in, and report in one orchestration call when available, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. updates_from is the inclusive first event ID of the current reporting window. Mode changes never request older saved-file explanations; omit pre-window IDs from automatic report_changes batches. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Design choices render local evidence and do not increase reporting volume. Only when a developer explicitly requests a missing reason or more context, answer with report_event context_id matching their exact retained ID, node_name, and action; this is allowed in milestones but not disabled. Do not generate extra context automatically; do not combine context_id with change_id. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
-	sdk.AddTool(server, &sdk.Tool{Name: "set_session", Description: "Select a private chat/worker workflow. Use the original stable chat ID and unique agent_id on resume; retain the returned session_id for other tools."}, func(ctx context.Context, req *sdk.CallToolRequest, input SessionInput) (*sdk.CallToolResult, SessionReceipt, error) {
+	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. Each worker has its own private workflow by default. Call set_session once when starting or resuming with the original stable chat ID and unique agent_id; starts are private unless resume_shared=true explicitly keeps previous sharing. Retain the returned session_id for all other tools and open the daemon origin plus view_path. Workspace names are generated locally and remain stable. Every subagent uses a distinct agent_id. Only share when requested: set_workspace create returns a readable name and ID; each cooperating worker joins using its own session_id and that name or workspace_id; leave restores private history. Shared get_state includes brief peer reasons at natural check-ins. Use trusted hook session IDs verbatim when supplied. MCP reconnects alone cannot identify resumed chats. After editing, include changed_paths with only this worker actual saved paths when trusted hooks provide no exact IDs. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: prepare brief reasons with the edit; after EACH edit tool, use hook pending IDs or get_state once with settle_ms=300 and report_changes for every own exact change_id before another edit, test, or final reply. Sequence edit, check-in, and report in one orchestration call when available, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. updates_from is the inclusive first event ID of the current reporting window. Mode changes never request older saved-file explanations; omit pre-window IDs from automatic report_changes batches. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Design choices render local evidence and do not increase reporting volume. Only when a developer explicitly requests a missing reason or more context, answer with report_event context_id matching their exact retained ID, node_name, and action; this is allowed in milestones but not disabled. Do not generate extra context automatically; do not combine context_id with change_id. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
+	sdk.AddTool(server, &sdk.Tool{Name: "set_session", Description: "Start or resume this worker privately. Use the original chat ID and unique agent_id; retain the returned session_id and open view_path. Only resume_shared=true keeps earlier sharing."}, func(ctx context.Context, req *sdk.CallToolRequest, input SessionInput) (*sdk.CallToolResult, SessionReceipt, error) {
 		if err := telemetry.Session(input.SessionID); err != nil {
 			return nil, SessionReceipt{}, err
 		}
@@ -214,6 +235,13 @@ func newServer(b backend) *sdk.Server {
 			return nil, SessionReceipt{}, err
 		}
 		result, err := b.activate(ctx, id)
+		if err != nil || input.ResumeShared || !result.Shared {
+			return nil, result, err
+		}
+		if _, err := b.workspace(ctx, hub.WorkspaceInput{SessionID: id, Action: "leave"}); err != nil {
+			return nil, SessionReceipt{}, err
+		}
+		result, err = b.activate(ctx, id)
 		return nil, result, err
 	})
 	sdk.AddTool(server, &sdk.Tool{Name: "report_event", Description: "Share a meaningful workflow step as work starts; briefly update its result.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, req *sdk.CallToolRequest, input Input) (*sdk.CallToolResult, Receipt, error) {
@@ -377,7 +405,7 @@ func (b remoteBackend) activate(ctx context.Context, id string) (SessionReceipt,
 		return SessionReceipt{}, fmt.Errorf("could not select chat (HTTP %d)", response.StatusCode)
 	}
 	result := SessionReceipt{UpdatesFrom: "0"}
-	err = json.NewDecoder(io.LimitReader(response.Body, 1024)).Decode(&result)
+	err = json.NewDecoder(io.LimitReader(response.Body, 4096)).Decode(&result)
 	return result, err
 }
 func (b remoteBackend) workspace(ctx context.Context, input hub.WorkspaceInput) (hub.Workspace, error) {

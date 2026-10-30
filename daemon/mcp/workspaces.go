@@ -16,8 +16,8 @@ import (
 type WorkspaceInput struct {
 	SessionID   string `json:"session_id,omitempty" jsonschema:"origin session ID returned by set_session or get_state"`
 	AgentID     string `json:"agent_id,omitempty" jsonschema:"this worker's stable unique reporter ID"`
-	Action      string `json:"action" jsonschema:"create starts fresh sharing; join requires its ID; leave restores private history"`
-	WorkspaceID string `json:"workspace_id,omitempty" jsonschema:"existing shared workspace ID, required only for join"`
+	Action      string `json:"action" jsonschema:"create starts fresh sharing; join requires its name or ID; leave restores private history"`
+	WorkspaceID string `json:"workspace_id,omitempty" jsonschema:"existing shared workspace name or ID, required only for join"`
 }
 type WorkspaceReceipt struct {
 	SessionID string `json:"session_id"`

@@ -25,7 +25,7 @@ func enableResult(configuration clientsetup.Configuration, root, endpoint, view 
 	}
 	if view == "ide" {
 		result["view_opened"] = false
-		result["view_next_step"] = "Open view_url using this host's built-in browser if available; use --view native for a companion beside other hosts."
+		result["view_next_step"] = "Load stef MCP, call set_session for this worker, then open endpoint plus its returned view_path using this host's built-in browser if available."
 		if configuration.Client == "vscode" {
 			result["open_command"] = "workbench.action.browser.open"
 		}

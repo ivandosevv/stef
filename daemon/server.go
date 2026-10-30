@@ -65,12 +65,12 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 		if !decodeJSON(w, r, &input, 1024) {
 			return
 		}
-		snapshot, err := h.RegisterSession(input.SessionID)
+		receipt, err := mcp.ActivateSession(h, input.SessionID)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		writeJSON(w, 200, mcp.SessionReceipt{SessionID: input.SessionID, WorkspaceID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()})
+		writeJSON(w, 200, receipt)
 	})
 	mux.HandleFunc("GET /api/workspaces", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"workspaces": h.Workspaces(), "current_workspace_id": h.Snapshot().SessionID})

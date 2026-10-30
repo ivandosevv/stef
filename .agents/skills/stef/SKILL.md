@@ -39,8 +39,12 @@ The project remembers
 A conflicting existing stef entry needs review; do not overwrite it.
 Use the returned endpoint to verify /healthz matches the intended root.
 
-For IDE view, open the returned view_url in the current editor group's built-in
-browser using the host's browser-control tool or command API when available.
+For IDE view, first bind this worker with set_session as described below. Open
+the verified endpoint plus its returned view_path in the current editor group's
+built-in browser using the host's browser-control tool or command API when
+available. The setup view_url is not scoped to this worker; do not use it for
+the agent's private view. Complete the client's MCP trust/reload step first if
+the tools have not loaded.
 VS Code's command is workbench.action.browser.open with the URL as its argument.
 Do not send this command to Cursor or JetBrains merely because their agent is
 Codex or Claude; use a browser capability actually exposed by that host.
@@ -66,15 +70,24 @@ than a guessed .idea file. Configuration-tested adapters and SDK transport tests
 do not prove that a real host session loaded tools, emitted hooks, or opened a
 pane; describe the actual verification performed.
 
-At the first task in a new or resumed chat, call set_session with the originally
-chosen stable chat ID as session_id and this worker's unique agent_id. Retain
+When enabling stef or starting/resuming a chat, call set_session once with the
+originally chosen stable chat ID as session_id and this worker's unique agent_id. Retain
 that pair for later set_session calls. Retain the returned worker session_id for
 every other tool; do not pass the returned derived ID back with agent_id on resume.
 If no chat ID is retained yet, create a unique one. A trusted lifecycle hook may supply the
 worker identity. Bind its exact session_id with set_session, omitting agent_id
-in that binding call; use the hook's reporter agent_id for later calls. Then call
-get_state once and follow update_mode and reporting_instructions in receipts.
+in that binding call; use the hook's reporter agent_id for later calls. Each
+explicit set_session starts privately, including when resuming a previously
+shared chat. Use resume_shared=true only when the user explicitly wants to
+retain its previous shared workspace. Ordinary get_state and reports preserve
+active sharing; do not call set_session again for every task or check-in.
+The receipt supplies workspace_name and a worker-scoped view_path. Open that
+path on the verified endpoint after binding, then call get_state once at task
+start and follow update_mode and reporting_instructions in receipts.
 The Updates control belongs to the selected workspace and persists on restart.
+Names such as Quiet Fox 2487 come from local word lists and numbers, remain
+stable across resume and Clear, and require no AI. Keep IDs for routing and
+describe workspaces to the user by name.
 
 Each agent and subagent starts with its own workspace. Give every subagent its
 own unique agent_id and tell it to set_session before reporting. MCP cannot
@@ -83,8 +96,8 @@ worker session_id as their default. Retain each chat/reporter pair on resume.
 
 Share only when requested or explicitly agreed for cooperating workers. Call
 set_workspace with your returned session_id, agent_id, and action=create. Give
-its workspace_id to the chosen agents and ask each to call action=join with
-that code. Keep using each worker's returned
+its returned name to the chosen agents and ask each to call action=join with
+that name in workspace_id; the invitation ID is also accepted. Keep using each worker's returned
 session_id for reports and check-ins; workspace_id identifies the shared
 view, not a replacement chat ID. action=leave restores that worker's private
 history without copying others' work. A new shared workspace starts empty.

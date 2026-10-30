@@ -16,6 +16,7 @@ import (
 // A workspace is a recorded workflow, not an MCP connection or hidden reasoning.
 type Workspace struct {
 	WorkspaceID string   `json:"workspace_id"`
+	Name        string   `json:"name"`
 	Shared      bool     `json:"shared"`
 	Members     []string `json:"members"`
 }
@@ -28,6 +29,7 @@ type WorkspaceRequest = WorkspaceInput
 type WorkspaceReceipt struct {
 	SessionID   string   `json:"session_id"`
 	WorkspaceID string   `json:"workspace_id"`
+	Name        string   `json:"name"`
 	Shared      bool     `json:"shared"`
 	Members     []string `json:"members"`
 }
@@ -91,10 +93,19 @@ func (h *Hub) registerLocked(id string) error {
 	if h.shared[id] {
 		return fmt.Errorf("session_id must identify an agent chat, not a shared workspace")
 	}
-	data, _ := json.Marshal(sessionControl{Control: "register", SessionID: id})
+	name := h.workspaceNames[id]
+	if name == "" {
+		var err error
+		name, err = h.newWorkspaceNameLocked()
+		if err != nil {
+			return err
+		}
+	}
+	data, _ := json.Marshal(sessionControl{Control: "register", SessionID: id, WorkspaceName: name})
 	if err := h.persist(data); err != nil {
 		return err
 	}
+	h.workspaceNames[id] = name
 	h.applyRegisterLocked(id)
 	h.broadcastWorkspacesLocked()
 	return nil
@@ -119,7 +130,7 @@ func (h *Hub) applyRegisterLocked(id string) {
 	}
 }
 func (h *Hub) workspaceLocked(id string) Workspace {
-	item := Workspace{WorkspaceID: id, Shared: h.shared[id], Members: []string{}}
+	item := Workspace{WorkspaceID: id, Name: h.workspaceNames[id], Shared: h.shared[id], Members: []string{}}
 	if item.Shared {
 		for origin, room := range h.memberships {
 			if room == id {
@@ -163,27 +174,37 @@ func (h *Hub) ConfigureWorkspace(input WorkspaceInput) (Workspace, error) {
 	if input.Action != "create" && input.Action != "join" && input.Action != "leave" {
 		return Workspace{}, fmt.Errorf("action must be create, join, or leave")
 	}
-	if input.WorkspaceID != "" && telemetry.Session(input.WorkspaceID) != nil {
-		return Workspace{}, fmt.Errorf("invalid workspace_id")
+	if len(input.WorkspaceID) > 128 {
+		return Workspace{}, fmt.Errorf("workspace name or ID is too long")
 	}
 	if input.Action != "join" && input.WorkspaceID != "" {
 		return Workspace{}, fmt.Errorf("workspace_id is only accepted when joining")
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if input.Action == "join" && !h.shared[input.WorkspaceID] {
-		return Workspace{}, fmt.Errorf("join requires an existing shared workspace_id")
+	room := ""
+	if input.Action == "join" {
+		var err error
+		room, err = h.sharedWorkspaceLocked(input.WorkspaceID)
+		if err != nil {
+			return Workspace{}, err
+		}
 	}
 	if err := h.registerLocked(input.SessionID); err != nil {
 		return Workspace{}, err
 	}
-	room := input.WorkspaceID
+	name := ""
 	if input.Action == "create" {
 		var id [16]byte
 		if _, err := rand.Read(id[:]); err != nil {
 			return Workspace{}, err
 		}
 		room = "shared-" + hex.EncodeToString(id[:])
+		var err error
+		name, err = h.newWorkspaceNameLocked()
+		if err != nil {
+			return Workspace{}, err
+		}
 	}
 	if input.Action == "leave" {
 		room = input.SessionID
@@ -191,9 +212,12 @@ func (h *Hub) ConfigureWorkspace(input WorkspaceInput) (Workspace, error) {
 	if room == h.resolveLocked(input.SessionID) {
 		return h.workspaceLocked(room), nil
 	}
-	data, _ := json.Marshal(sessionControl{Control: "workspace", SessionID: input.SessionID, WorkspaceID: room, Action: input.Action})
+	data, _ := json.Marshal(sessionControl{Control: "workspace", SessionID: input.SessionID, WorkspaceID: room, WorkspaceName: name, Action: input.Action})
 	if err := h.persist(data); err != nil {
 		return Workspace{}, err
+	}
+	if name != "" {
+		h.workspaceNames[room] = name
 	}
 	h.applyWorkspaceLocked(input.SessionID, room, input.Action)
 	// The origin follows its own membership. Other origins keep their selection.
@@ -324,14 +348,25 @@ func (h *Hub) replayWorkspaceControl(control sessionControl) (bool, error) {
 		if telemetry.Session(control.SessionID) != nil {
 			return true, fmt.Errorf("invalid workspace registration")
 		}
+		if err := h.replayWorkspaceNameLocked(control.SessionID, control.WorkspaceName); err != nil {
+			return true, err
+		}
 		h.applyRegisterLocked(control.SessionID)
 		return true, nil
 	case "workspace":
 		if telemetry.Session(control.SessionID) != nil || telemetry.Session(control.WorkspaceID) != nil || (control.Action != "create" && control.Action != "join" && control.Action != "leave") {
 			return true, fmt.Errorf("invalid workspace membership")
 		}
+		if err := h.replayWorkspaceNameLocked(control.WorkspaceID, control.WorkspaceName); err != nil {
+			return true, err
+		}
 		h.applyWorkspaceLocked(control.SessionID, control.WorkspaceID, control.Action)
 		return true, nil
+	case "workspace_name":
+		if telemetry.Session(control.WorkspaceID) != nil || control.WorkspaceName == "" {
+			return true, fmt.Errorf("invalid workspace name journal record")
+		}
+		return true, h.replayWorkspaceNameLocked(control.WorkspaceID, control.WorkspaceName)
 	case "capture":
 		if control.ObservationID == "" || control.WorkspaceID == "" || control.CapturedEvent == nil || control.CapturedEvent.SessionID != control.WorkspaceID || !isFileChange(*control.CapturedEvent) {
 			return true, fmt.Errorf("invalid capture assignment")
