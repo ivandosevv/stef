@@ -27,10 +27,13 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "name": "stef", "version": "0.3.0", "repo": h.Snapshot().Repo})
 	})
 	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, h.Settings())
+		writeJSON(w, http.StatusOK, h.Settings(r.URL.Query().Get("session_id")))
 	})
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
-		var input telemetry.Settings
+		var input struct {
+			telemetry.Settings
+			SessionID string `json:"session_id,omitempty"`
+		}
 		if !decodeJSON(w, r, &input, 1024) {
 			return
 		}
@@ -38,7 +41,19 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 			http.Error(w, "update_mode must be milestones, files, or disabled", http.StatusBadRequest)
 			return
 		}
-		settings, err := h.SetUpdateMode(input.UpdateMode)
+		scope := r.URL.Query().Get("session_id")
+		if scope != "" && input.SessionID != "" && scope != input.SessionID {
+			http.Error(w, "conflicting session_id", 400)
+			return
+		}
+		if scope == "" {
+			scope = input.SessionID
+		}
+		if scope != "" && telemetry.Session(scope) != nil {
+			http.Error(w, "invalid session_id", http.StatusBadRequest)
+			return
+		}
+		settings, err := h.SetUpdateMode(input.UpdateMode, scope)
 		if err != nil {
 			http.Error(w, "cannot persist update mode", http.StatusInternalServerError)
 			return
@@ -50,12 +65,27 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 		if !decodeJSON(w, r, &input, 1024) {
 			return
 		}
-		snapshot, err := h.ActivateSession(input.SessionID)
+		snapshot, err := h.RegisterSession(input.SessionID)
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		writeJSON(w, 200, mcp.SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()})
+		writeJSON(w, 200, mcp.SessionReceipt{SessionID: input.SessionID, WorkspaceID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()})
+	})
+	mux.HandleFunc("GET /api/workspaces", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"workspaces": h.Workspaces(), "current_workspace_id": h.Snapshot().SessionID})
+	})
+	mux.HandleFunc("POST /api/workspaces", func(w http.ResponseWriter, r *http.Request) {
+		var input hub.WorkspaceInput
+		if !decodeJSON(w, r, &input, 4096) {
+			return
+		}
+		workspace, err := h.ConfigureWorkspace(input)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, workspace)
 	})
 	mux.HandleFunc("POST /api/sessions/clear", func(w http.ResponseWriter, r *http.Request) {
 		var input mcp.SessionInput
@@ -133,6 +163,10 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if err := h.ClaimChanges(input.SessionID, input.Paths); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		state, err := h.ExplanationReminder(input.SessionID, input.Paths)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -162,6 +196,13 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 		if err != nil {
 			http.Error(w, err.Error(), 400)
 			return
+		}
+		// A subagent may first appear in a tool callback rather than SessionStart.
+		if activity.SessionID != "" {
+			if _, err := h.RegisterSession(activity.SessionID); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
 		}
 		stored, err := h.Publish(event)
 		if err != nil {

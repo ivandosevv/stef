@@ -11,9 +11,12 @@ the workflow, inspect a diff, or send a suggestion while the agent works.
 - Click a file to see its saved diff and suggest something about an exact line.
 - Choose major milestones, every file, or turn updates off.
 - Keep the view minimal, or explore changes and supported CSS previews in Interactive.
+- Keep agents separate, or let chosen agents share one workflow.
 
 The workflow and selected file scroll separately. Local browsing and previews
 make no AI calls; explanations and questions may use agent tokens.
+Each agent and subagent gets its own workspace. Share a workspace code to
+coordinate through short recorded explanations; leaving restores private history.
 
 ## Get started
 

@@ -21,6 +21,7 @@ import (
 type ClaudeInput struct {
 	Event     string `json:"hook_event_name"`
 	SessionID string `json:"session_id"`
+	AgentID   string `json:"agent_id"`
 	CWD       string `json:"cwd"`
 	Tool      string `json:"tool_name"`
 	Input     struct {
@@ -43,13 +44,19 @@ func Claude(raw []byte, root string) (telemetry.Activity, error) {
 			return telemetry.Activity{}, fmt.Errorf("hook cwd does not match the tracked root")
 		}
 	}
-	sum := sha256.Sum256([]byte(input.SessionID))
+	// Claude documents agent_id on callbacks inside subagents and teammates.
+	// A name/type alone is not a unique worker identity. Preserve parent IDs.
+	identity := input.SessionID
+	if input.AgentID != "" {
+		identity += "\x00" + input.AgentID
+	}
+	sum := sha256.Sum256([]byte(identity))
 	id := fmt.Sprintf("claude-%x", sum[:4])
-	if input.SessionID == "" {
+	if identity == "" {
 		id = "claude"
 	}
 	a := telemetry.Activity{AgentID: id, Tool: input.Tool}
-	if input.SessionID != "" {
+	if identity != "" {
 		a.SessionID = fmt.Sprintf("claude-%x", sum[:16])
 	}
 	switch input.Event {

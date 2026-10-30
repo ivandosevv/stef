@@ -18,17 +18,23 @@ func (h *Hub) ExplanationReminder(session string, paths []string) (telemetry.Rem
 	if err != nil {
 		return telemetry.ReminderState{}, err
 	}
+	if err := h.ClaimChanges(session, paths); err != nil {
+		return telemetry.ReminderState{}, err
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if session == "" {
-		session = h.active
+	origin := session
+	if origin == "" {
+		origin = h.active
 	}
+	session = h.resolveLocked(session)
+	setting := h.settingLocked(session)
 	state := telemetry.ReminderState{
-		Repo: h.repo, SessionID: session, UpdateMode: h.updateMode,
-		UpdatesFrom:    strconv.FormatUint(h.updatesFrom, 10),
+		Repo: h.repo, SessionID: origin, UpdateMode: setting.Mode,
+		UpdatesFrom:    strconv.FormatUint(setting.From, 10),
 		PendingChanges: []telemetry.PendingChange{},
 	}
-	if h.updateMode != telemetry.UpdatesFiles {
+	if setting.Mode != telemetry.UpdatesFiles {
 		return state, nil
 	}
 	explained := make(map[string]bool)
@@ -43,7 +49,7 @@ func (h *Hub) ExplanationReminder(session string, paths []string) (telemetry.Rem
 		}
 	}
 	for _, event := range h.sessions[session] {
-		if !files[event.NodeName] || !isFileChange(event) || explained[event.ID] || !h.currentEventLocked(event.ID) {
+		if !files[event.NodeName] || !isFileChange(event) || explained[event.ID] || !h.currentEventLocked(event.ID, session) {
 			continue
 		}
 		state.PendingCount++

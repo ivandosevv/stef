@@ -10,13 +10,14 @@ func (h *Hub) OfferFeedback(agent string, session ...string) []telemetry.Feedbac
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.updateMode == telemetry.UpdatesDisabled {
-		return nil
-	}
 	var notes []telemetry.FeedbackNote
 	id := h.active
 	if len(session) > 0 && session[0] != "" {
 		id = session[0]
+	}
+	id = h.resolveLocked(id)
+	if h.settingLocked(id).Mode == telemetry.UpdatesDisabled {
+		return nil
 	}
 	key := id + "\n" + agent
 	seen := h.offered[key]

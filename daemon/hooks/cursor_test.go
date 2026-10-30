@@ -133,7 +133,7 @@ func TestCursorStripsSensitiveFieldsAndRejectsOutsideRoots(t *testing.T) {
 
 func TestCursorOwnMCPCallbacksAreIgnoredAndToolLabelsBounded(t *testing.T) {
 	root, _ := filepath.EvalSymlinks(t.TempDir())
-	for _, tool := range []string{"MCP:report_event", "MCP:get_state", "MCP:report_changes", "MCP:set_session", "MCP:stef:report_event", "mcp__stef__get_state"} {
+	for _, tool := range []string{"MCP:report_event", "MCP:get_state", "MCP:report_changes", "MCP:set_session", "MCP:set_workspace", "MCP:stef:set_workspace", "MCP:stef:report_event", "mcp__stef__get_state"} {
 		if _, err := hooks.Cursor(cursorPayload(t, root, "postToolUse", map[string]any{"tool_name": tool}), root); !errors.Is(err, hooks.ErrIgnored) {
 			t.Fatalf("stef callback %s accepted", tool)
 		}

@@ -1,6 +1,6 @@
 package telemetry
 
-// UpdateMode is a project-wide reporting preference, independent of chat history.
+// UpdateMode is a workspace reporting preference, independent of view appearance.
 type UpdateMode string
 
 const (
@@ -25,6 +25,6 @@ func (mode UpdateMode) ReportingInstructions() string {
 	case UpdatesDisabled:
 		return "Updates disabled. Stop reporting and check-ins for this turn; read the mode once at the next task."
 	default:
-		return "After each edit, use hook pending IDs or get_state once with settle_ms=300; report_changes with each own exact reason before another edit, test, or final reply. Never backfill earlier windows. context_id answers explicit requests only."
+		return "After each edit, use hook pending IDs or get_state once with changed_paths (actual own saved paths) and settle_ms=300; report_changes with each own exact reason before another edit, test, or final reply. Never backfill earlier windows. context_id answers explicit requests only."
 	}
 }

@@ -41,16 +41,21 @@ func (h *Hub) validateChangeLocked(e telemetry.Event) error {
 	return nil
 }
 
-func (h *Hub) currentEventLocked(id string) bool {
+func (h *Hub) currentEventLocked(id string, session ...string) bool {
 	n, err := strconv.ParseUint(id, 10, 64)
-	return err == nil && n >= h.updatesFrom
+	from := h.updatesFrom
+	if len(session) > 0 {
+		from = h.settingLocked(session[0]).From
+	}
+	return err == nil && n >= from
 }
 
 // PendingChanges returns unexplained revisions from the current reporting window, without code.
 func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChange, int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.updateMode != telemetry.UpdatesFiles {
+	session = h.resolveLocked(session)
+	if h.settingLocked(session).Mode != telemetry.UpdatesFiles {
 		return []telemetry.PendingChange{}, 0
 	}
 	if session == "" {
@@ -73,7 +78,7 @@ func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChan
 	changes := make([]telemetry.PendingChange, 0)
 	count := 0
 	for _, event := range h.sessions[session] {
-		if !isFileChange(event) || explained[event.ID] || !h.currentEventLocked(event.ID) {
+		if !isFileChange(event) || explained[event.ID] || !h.currentEventLocked(event.ID, session) {
 			continue
 		}
 		count++
@@ -89,7 +94,8 @@ func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChan
 func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeExplanation) ([]telemetry.Event, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.updateMode != telemetry.UpdatesFiles {
+	session = h.resolveLocked(session)
+	if h.settingLocked(session).Mode != telemetry.UpdatesFiles {
 		return []telemetry.Event{}, nil
 	}
 	if len(changes) < 1 || len(changes) > 50 {
@@ -116,7 +122,7 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 		if err != nil {
 			return nil, err
 		}
-		if !h.currentEventLocked(target.ID) {
+		if !h.currentEventLocked(target.ID, session) {
 			return nil, fmt.Errorf("change_id %q predates the current reporting window; omit it from automatic batches, or use report_event only for a developer-requested clarification", change.ChangeID)
 		}
 		event, err := telemetry.Normalize(telemetry.Event{SessionID: session, AgentID: agent, ChangeID: change.ChangeID, NodeName: target.NodeName, Action: target.Action, Summary: change.Summary, Why: change.Why, Parents: change.Parents, Status: "ready", Source: "agent"})
@@ -142,9 +148,7 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 		h.next++
 		h.store(event)
 		delete(h.claims[session+"\n"+event.NodeName], event.AgentID)
-		if session == h.active {
-			h.broadcast(Message{Type: "event", SessionID: session, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Event: &event})
-		}
+		h.broadcast(h.eventMessageLocked(event))
 	}
 	return events, nil
 }

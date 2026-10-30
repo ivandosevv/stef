@@ -66,9 +66,31 @@ than a guessed .idea file. Configuration-tested adapters and SDK transport tests
 do not prove that a real host session loaded tools, emitted hooks, or opened a
 pane; describe the actual verification performed.
 
-At the start of a task, get_state once and follow update_mode and the compact
-reporting_instructions returned in each receipt. The Updates control is shared
-by the project's views and persists across chats and engine restart.
+At the first task in a new or resumed chat, call set_session with the originally
+chosen stable chat ID as session_id and this worker's unique agent_id. Retain
+that pair for later set_session calls. Retain the returned worker session_id for
+every other tool; do not pass the returned derived ID back with agent_id on resume.
+If no chat ID is retained yet, create a unique one. A trusted lifecycle hook may supply the
+worker identity. Bind its exact session_id with set_session, omitting agent_id
+in that binding call; use the hook's reporter agent_id for later calls. Then call
+get_state once and follow update_mode and reporting_instructions in receipts.
+The Updates control belongs to the selected workspace and persists on restart.
+
+Each agent and subagent starts with its own workspace. Give every subagent its
+own unique agent_id and tell it to set_session before reporting. MCP cannot
+identify anonymous workers using the same transport, so do not pass the parent's
+worker session_id as their default. Retain each chat/reporter pair on resume.
+
+Share only when requested or explicitly agreed for cooperating workers. Call
+set_workspace with your returned session_id, agent_id, and action=create. Give
+its workspace_id to the chosen agents and ask each to call action=join with
+that code. Keep using each worker's returned
+session_id for reports and check-ins; workspace_id identifies the shared
+view, not a replacement chat ID. action=leave restores that worker's private
+history without copying others' work. A new shared workspace starts empty.
+Shared get_state returns bounded recorded explanations with their authors; read
+it at natural coordination points. Sharing does not expose hidden reasoning,
+merge model conversations, or start extra model calls. Never poll.
 Updates changes start a new reporting window, identified by updates_from.
 Only new work enters automatic reporting. Do not request or backfill reasons
 for saved history when the user changes the mode or opens older steps.
@@ -77,17 +99,20 @@ In milestones mode, report only major steps with brief reasons through
 report_event. Use the real action, running/ready state, and reported parents
 to support its local visualization. Skip file explanations and per-edit check-ins.
 
-In files mode, every eligible saved text-file revision appears automatically.
-Prepare its brief reason while preparing the edit. After each edit tool, use
+In files mode, saved revisions are attributed using concrete edit paths.
+Prepare each file's brief reason while preparing the edit. After each edit tool, use
 the exact pending IDs from a trusted post-edit reminder, or call get_state once
-with settle_ms=300 for the watcher debounce. Immediately report_changes for
+with settle_ms=300 and changed_paths containing only the relative paths from
+your actual edit. This claims observed revisions for your workspace without
+copying another private agent's saves. Immediately report_changes for
 every file you changed, before another edit, test, or final reply. When tool
 orchestration is available, sequence the successful edit, bounded check-in, and
 exact report in one call without another model turn between them. Send one batch
 with 2–4 word summaries and short user-facing reasons
 (about 12 words). Include entry points, helper files, tests, docs, configuration,
-and edits made by your cooperating agents. A multi-file patch needs a reason for
-each file; a later revision needs a new explanation. Do not wait until the final
+and edits made by cooperating agents that explicitly share this workspace. A
+multi-file patch needs a reason for each file; a later revision needs a new
+explanation. Do not wait until the final
 reply. Before finishing, check pending_changes once and explain your remaining
 edits. Only explain changes you can attribute to your task; other edits stay
 visibly unexplained. Per-file explanations can use more agent tokens than major
@@ -137,16 +162,16 @@ breaks. A missing explanation remains visible in the workflow. MCP instructions
 guide connected agents; they cannot force an unconnected or non-cooperating host
 to report. Do not claim that filesystem monitoring reveals the author's intent.
 
-stef keeps one workflow per chat. Trusted Codex/Claude/Cursor lifecycle hooks select
-a stable hashed chat ID. If the host does not supply those signals, call
-set_session once on a new/resumed conversation: reuse an ID already retained in
-that conversation, otherwise create a unique ID and retain the returned ID in
-the chat context. Include that session_id in later report_event/get_state calls.
-Do not generate a new ID on every turn or confuse an MCP connection ID with a
-chat ID. Opening an idle chat that emits no signal cannot switch stef by itself.
+Include the returned session_id in later report_event, report_changes, and
+get_state calls, including while sharing. Do not generate a new ID every turn
+or confuse MCP transport identity with chat identity. When the host supplies no
+chat ID, a connection's private fallback cannot restore a previous chat after
+reconnection; retain a stable ID through set_session instead. Opening an idle
+chat that emits no signal cannot switch stef by itself.
 
 Keep each milestone to a short label and a brief user-facing reason for choosing
 the file or making the change. Supply parents only for actual relationships;
 other arrows represent step order. The UI contains the workflow, explanations,
-a small suggestion field, and Clear for this chat. No dashboard narration is
-needed. Clear starts a new segment without clearing another chat's workflow.
+a small suggestion field, a compact workspace/sharing control, and Clear. No
+dashboard narration is needed. Clear affects the selected workspace; in a shared
+workspace all members see the cleared workflow. Other private histories remain.

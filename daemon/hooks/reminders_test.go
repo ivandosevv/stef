@@ -162,6 +162,7 @@ func TestRunReminderSkipsNonEditsAndSelfTools(t *testing.T) {
 			{"PostToolUse", "Bash", map[string]string{"command": "echo changed > main.go"}},
 			{"PostToolUse", "mcp__external__edit", map[string]string{"file_path": "main.go"}},
 			{"PostToolUse", "mcp__stef__report_changes", nil},
+			{"PostToolUse", "mcp__stef__set_workspace", nil},
 			{"PostToolUse", "apply_patch", nil},
 		} {
 			t.Run(client+fmt.Sprint(i), func(t *testing.T) {
@@ -175,6 +176,30 @@ func TestRunReminderSkipsNonEditsAndSelfTools(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSessionStartReportsOnlyTrustedWorkerIdentity(t *testing.T) {
+	for _, client := range []string{"claude", "codex"} {
+		t.Run(client, func(t *testing.T) {
+			f := newReminderFixture(t)
+			output := runReminder(t, f, client, "SessionStart", "", nil)
+			var result struct {
+				Output struct {
+					Event   string `json:"hookEventName"`
+					Context string `json:"additionalContext"`
+				} `json:"hookSpecificOutput"`
+			}
+			if err := json.Unmarshal([]byte(output), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Output.Event != "SessionStart" || !strings.Contains(result.Output.Context, f.activity.SessionID) || !strings.Contains(result.Output.Context, f.activity.AgentID) {
+				t.Fatal("startup did not expose its actual trusted worker identity")
+			}
+			if strings.Join(f.requests, ",") != "/healthz,/api/activity" || strings.Contains(output+strings.Join(f.bodies, ""), "private-") {
+				t.Fatal("startup fetched pending data or exposed private input")
+			}
+		})
 	}
 }
 func TestRunReminderHonorsModeAndClearedWindows(t *testing.T) {

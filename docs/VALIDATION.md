@@ -621,3 +621,23 @@ A real Every file task completed through this native discovery path, supplying
 its exact explanation before validation. make check and make test passed,
 including backend race tests and all 41 UI tests. The rendered personal skill
 passed the skill validator. Evidence is in artifacts/claude-home-discovery-summary.json.
+
+## Private and shared workspaces
+
+- Private defaults and explicit three-worker sharing pass across real stdio,
+  forwarding, and Streamable HTTP MCP connections using the official SDK.
+- Stable chat/worker IDs survive transport reconnects. Leaving restores private
+  history; shared settings, suggestions, and Clear stay inside that workspace.
+- Exact edited paths claim observed revisions once. Unattributed filesystem
+  saves are not copied into every private workflow. Claude's documented optional
+  subagent ID is covered, including tool callbacks without SessionStart.
+- Journal recovery covers interruptions in assignment metadata and captured
+  source. Scoped capture generations preserve other workers' queued saves.
+- All 33 browser scenarios pass, including separate views, shared membership,
+  on-demand exact diffs, saved history, update modes, and independent scrolling.
+- The UI has 42 passing unit tests; Go checks and backend race tests pass.
+
+These collaboration checks use MCP clients, not simultaneous authenticated
+Claude and Codex model tasks. Anonymous workers still need distinct reporter
+IDs supplied by their host or the agent skill. Shared context contains recorded
+steps and user-facing explanations, with no background model calls.

@@ -11,7 +11,7 @@ The product name is stef. In VS Code, use its existing integrated browser editor
 beside the agent; a native companion remains available for terminal and other
 hosts. IDE plugins are optional experiments, not a required installation. Keep the
 observer, lifecycle adapters, MCP contract, and IDE host separate. Passive file
-tracking and hook ingestion must make no model calls. Respect the root's Updates
+tracking and hook ingestion must make no model calls. Respect the current workspace's Updates
 setting: milestones reports only major steps with reasons, files captures and
 explains each saved file revision, and disabled stops new recording/reporting.
 Updates changes begin a new recording window (updates_from); automatic
@@ -58,6 +58,13 @@ and line numbers, and clearly identify truncated previews. Opening a diff must
 make no model call and must not substitute the current file for historical data.
 Keep closed steps to a file and short label; reveal the reason on selection and the
 suggestion input on demand.
+Each worker and subagent defaults to its own private workspace. Use distinct
+agent_id values and the original stable chat ID in set_session; retain its returned
+origin session_id for all other tools. Share only through explicit set_workspace
+create/join, passing the invitation ID to each cooperating worker. Leaving restores
+private history. Shared get_state includes recorded brief reasons and authors, never
+hidden reasoning. Include only actual own saved paths in changed_paths when trusted
+hooks cannot provide exact revision IDs. Private views never follow another worker.
 New chats start empty; resumed chat IDs restore their own saved workflow. Do not
 reintroduce dashboards, replay bars, metrics, or code inspectors unless
 the user asks. Distinguish chat identity signals from MCP transport connections;
@@ -82,3 +89,4 @@ Preserve remote history, use clear commit messages, and never force-push. Inspec
 the staged files first; keep credentials, local client configuration, runtime
 history, test artifacts, caches, and generated output out of commits. This
 authorization applies to stef only, not other repositories or publication tasks.
+<!-- end -->

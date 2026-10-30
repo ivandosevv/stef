@@ -11,7 +11,7 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument("--repo", required=True)
 parser.add_argument("--endpoint", required=True)
-parser.add_argument("--tool", required=True, choices=["report_event", "report_changes", "get_state", "set_session", "connection"])
+parser.add_argument("--tool", required=True, choices=["report_event", "report_changes", "get_state", "set_session", "set_workspace", "connection"])
 options = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 arguments = json.load(sys.stdin)

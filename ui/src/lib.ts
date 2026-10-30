@@ -32,8 +32,15 @@ export interface AgentEvent {
 export type UpdateMode = 'milestones' | 'files' | 'disabled';
 export const isUpdateMode = (value: unknown): value is UpdateMode => ['milestones', 'files', 'disabled'].includes(value as string);
 
+export interface Workspace {
+  workspace_id: string;
+  shared: boolean;
+  members: string[];
+}
+
 export type StreamMessage =
-  | { type: 'snapshot'; repo: string; session_id?: string; events?: AgentEvent[]; update_mode?: UpdateMode; updates_from?: string }
+  | { type: 'workspaces'; workspaces: Workspace[]; current_workspace_id?: string }
+  | { type: 'snapshot'; repo: string; session_id?: string; events?: AgentEvent[]; update_mode?: UpdateMode; updates_from?: string; workspaces?: Workspace[] }
   | { type: 'event'; session_id?: string; event: AgentEvent };
 
 export const HISTORY_LIMIT = 5000;
@@ -70,7 +77,7 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
       const automatic = explanations.get(event.id);
       const context = contexts.get(event.id);
       const explanation = context && (!automatic || BigInt(context.id) > BigInt(automatic.id)) ? context : automatic;
-      steps.push({ ...event, change_id: event.id, reference_id: event.id, summary: shortName(event.node_name) + ' · ' + (automatic?.summary ?? event.action), why: explanation ? brief(explanation.why) : '', explanation: explanation?.why ?? '', parents: automatic?.parents ?? [], explanation_pending: !explanation });
+      steps.push({ ...event, agent_id: explanation?.agent_id ?? event.agent_id, change_id: event.id, reference_id: event.id, summary: shortName(event.node_name) + ' · ' + (automatic?.summary ?? event.action), why: explanation ? brief(explanation.why) : '', explanation: explanation?.why ?? '', parents: automatic?.parents ?? [], explanation_pending: !explanation });
       continue;
     }
     const hook = event.source === 'hook';

@@ -80,41 +80,51 @@ func TestPerChangeCoverageOverMCP(t *testing.T) {
 				}
 			}
 			var selected bridge.SessionReceipt
-			call("set_session", bridge.SessionInput{SessionID: "changes-chat"}, &selected)
+			call("set_session", bridge.SessionInput{SessionID: "changes-chat", AgentID: "agent"}, &selected)
 			observe := func(node string) telemetry.Event {
 				t.Helper()
 				event, err := h.Publish(telemetry.Event{AgentID: "filesystem", NodeName: node, Action: "modified", Summary: "File modified", Why: "A file save was observed.", Source: "watcher", Kind: "file"})
 				if err != nil {
 					t.Fatal(err)
 				}
-				return event
+				var claimed bridge.State
+				call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent", ChangedPaths: []string{node}}, &claimed)
+				capturedEvents := h.SessionSnapshot(selected.SessionID).Events
+				for i := len(capturedEvents) - 1; i >= 0; i-- {
+					captured := capturedEvents[i]
+					if captured.Source == "watcher" && captured.NodeName == node && captured.ID != event.ID {
+						return captured
+					}
+				}
+				t.Fatal("saved path was not captured in this agent workspace")
+				return telemetry.Event{}
 			}
 			first := observe("theme.ts")
 			second := observe("main.ts")
 			var milestone bridge.Receipt
-			call("report_event", bridge.Input{AgentID: "agent", NodeName: "main.ts", Action: "modified", Summary: "Apply appearance", Why: "Restore the saved appearance on startup.", Status: "ready"}, &milestone)
+			call("report_event", bridge.Input{SessionID: selected.SessionID, AgentID: "agent", NodeName: "main.ts", Action: "modified", Summary: "Apply appearance", Why: "Restore the saved appearance on startup.", Status: "ready"}, &milestone)
 			if milestone.PendingCount != 2 || len(milestone.PendingChanges) != 2 {
 				t.Fatalf("receipt hid pending files: %+v", milestone)
 			}
 			var state bridge.State
-			call("get_state", bridge.StateInput{Limit: 1, SettleMS: 1}, &state)
+			call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent", Limit: 1, SettleMS: 1}, &state)
 			if len(state.Events) != 1 || state.PendingCount != 2 {
 				t.Fatalf("state truncated pending revisions: %+v", state)
 			}
 			var receipt bridge.ChangesReceipt
-			call("report_changes", bridge.ChangesInput{AgentID: "agent", Changes: []telemetry.ChangeExplanation{
+			call("report_changes", bridge.ChangesInput{SessionID: selected.SessionID, AgentID: "agent", Changes: []telemetry.ChangeExplanation{
 				{ChangeID: first.ID, Summary: "Save theme preference", Why: "Keep preference logic separate from rendering."},
 				{ChangeID: second.ID, Summary: "Restore before mounting", Why: "Apply the saved choice before rendering.", Parents: []string{"theme.ts"}},
 			}}, &receipt)
 			if !receipt.Accepted || len(receipt.IDs) != 2 || receipt.PendingCount != 0 {
 				t.Fatalf("batch receipt missing exact coverage: %+v", receipt)
 			}
-			last := h.Snapshot().Events
+			last := h.SessionSnapshot(selected.SessionID).Events
 			if last[len(last)-1].ChangeID != second.ID || last[len(last)-2].ChangeID != first.ID {
 				t.Fatal("batch lost exact links")
 			}
 			third := observe("main.ts")
-			call("get_state", bridge.StateInput{Limit: 1}, &state)
+			call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent", Limit: 1}, &state)
 			if state.PendingCount != 1 || state.PendingChanges[0].ChangeID != third.ID {
 				t.Fatal("later save inherited an old explanation")
 			}

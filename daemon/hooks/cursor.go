@@ -132,7 +132,7 @@ func cursorOwnTool(tool string) bool {
 		}
 	}
 	if strings.HasPrefix(lower, "mcp:") {
-		for _, name := range []string{"get_state", "report_event", "report_changes", "set_session"} {
+		for _, name := range []string{"get_state", "report_event", "report_changes", "set_session", "set_workspace"} {
 			if strings.TrimPrefix(lower, "mcp:") == name {
 				return true
 			}

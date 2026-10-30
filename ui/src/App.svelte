@@ -5,14 +5,22 @@
   import UpdatesPicker from './components/UpdatesPicker.svelte';
   import FileDiff from './components/FileDiff.svelte';
   import DesignPicker from './components/DesignPicker.svelte';
+  import WorkspacePicker from './components/WorkspacePicker.svelte';
   import ChangeVisual from './components/ChangeVisual.svelte';
   import { readDesign, saveDesign, type Design } from './design';
   import { hasFileDiff } from './diff';
   import { connectStream, isEmbedded, sendToHost } from './transport';
-  import { workflowSteps, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode } from './lib';
+  import { workflowSteps, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode, type Workspace, type StreamMessage } from './lib';
 
   let events = $state<AgentEvent[]>([]);
   let session = $state('');
+  let origin = $state('');
+  let workspaces = $state<Workspace[]>([]);
+  let disconnectStream: (() => void) | undefined;
+  let streamEpoch = 0;
+  let disposed = false;
+  const workspaceKey = 'stef-workspace:' + location.host;
+  const shared = $derived(Boolean(workspaces.find(workspace => workspace.workspace_id === session)?.shared));
   let selected = $state<string | null>(null);
   let connected = $state(false);
   let error = $state('');
@@ -150,7 +158,7 @@
     error = '';
     const previousMode = updateMode;
     try {
-      const response = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ update_mode: mode }) });
+      const response = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ update_mode: mode, session_id: session }) });
       if (!response.ok) throw new Error('Could not change updates.');
       const settings = await response.json();
       if (!isUpdateMode(settings.update_mode)) throw new Error('Could not change updates.');
@@ -197,8 +205,10 @@
     } catch (cause) { noteStatus = cause instanceof Error ? cause.message : 'Could not send your note.'; }
     finally { busy = false; }
   }
-  onMount(() => {
-    const disconnect = connectStream(data => {
+  function receiveStream(data: StreamMessage) {
+      if (data.type === 'workspaces') { workspaces = data.workspaces; return; }
+      if (data.type === 'snapshot' && data.workspaces) workspaces = data.workspaces;
+      if (data.type === 'snapshot' && origin && data.session_id !== origin && !workspaces.some(room => room.workspace_id === data.session_id && room.members.includes(origin))) return;
       const previous = workflowWindows(events, updateMode, updatesFrom).current.at(-1);
       if (data.type === 'snapshot') {
         const boundary = data.updates_from && /^\d+$/.test(data.updates_from) ? data.updates_from : '0';
@@ -227,23 +237,60 @@
         events = mergeEvents(events, [data.event]);
         followUpdate(previous);
       }
-    }, (online) => { connected = online; });
+  }
+  function selectWorkspace(id: string) {
+    if (!id || disposed) return;
+    const epoch = ++streamEpoch;
+    disconnectStream?.(); connected = false; origin = id;
+    try { localStorage.setItem(workspaceKey, id); } catch { /* Selection remains local to this view. */ }
+    const url = new URL(location.href); url.searchParams.set('session_id', id);
+    history.replaceState(null, '', url);
+    disconnectStream = connectStream(data => { if (epoch === streamEpoch) receiveStream(data); }, online => { if (epoch === streamEpoch) connected = online; }, id);
+  }
+  async function loadWorkspaces() {
+    const response = await fetch('/api/workspaces');
+    if (!response.ok) throw new Error('Could not load workspaces.');
+    const catalog = await response.json();
+    workspaces = Array.isArray(catalog.workspaces) ? catalog.workspaces : [];
+    return String(catalog.current_workspace_id ?? 'local');
+  }
+  async function changeSharing(action: 'create' | 'join' | 'leave', workspaceID?: string) {
+    const current = workspaces.find(room => room.workspace_id === session);
+    if (!current?.members.includes(origin)) throw new Error('Select an agent before changing sharing.');
+    const response = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: origin, action, ...(workspaceID ? { workspace_id: workspaceID } : {}) }) });
+    if (!response.ok) throw new Error(action === 'join' ? 'That sharing ID could not be joined.' : 'Could not change sharing.');
+    const receipt = await response.json();
+    await loadWorkspaces();
+    selectWorkspace(String(receipt.session_id ?? origin));
+  }
+  onMount(() => {
+    void (async () => {
+      let current = 'local';
+      try { current = await loadWorkspaces(); } catch { /* Older local engines still expose a workflow stream. */ }
+      if (disposed) return;
+      const requested = new URL(location.href).searchParams.get('session_id');
+      let saved: string | null = null;
+      try { saved = localStorage.getItem(workspaceKey); } catch { /* Use the URL or latest workspace. */ }
+      const remembered = saved && workspaces.some(room => room.workspace_id === saved || room.members.includes(saved)) ? saved : null;
+      selectWorkspace(requested ?? remembered ?? current);
+    })();
     void (window as NativeWindow).stefNativeReady?.();
-    return disconnect;
+    return () => { disposed = true; streamEpoch++; disconnectStream?.(); };
   });
 </script>
 
 <div class="stef-app" data-update-mode={updateMode} data-design={design}>
-  <header><span class="brand">stef</span><div class="header-actions"><UpdatesPicker mode={updateMode} {connected} onchange={changeUpdates} /><DesignPicker {design} onchange={changeDesign} /><ThemePicker /><button class="clear" onclick={clear} disabled={busy || !events.length} aria-label="Clear this chat’s workflow" title="Clear this chat’s workflow">↺</button></div></header>
+  <header><div class="brand-group"><span class="brand">stef</span><WorkspacePicker {origin} workspaceID={session} {workspaces} {connected} onselect={selectWorkspace} onchange={changeSharing} /></div><div class="header-actions"><UpdatesPicker mode={updateMode} {connected} onchange={changeUpdates} /><DesignPicker {design} onchange={changeDesign} /><ThemePicker /><button class="clear" onclick={clear} disabled={busy || !events.length} aria-label="Clear this chat’s workflow" title={shared ? 'Clear this shared workflow for all members' : 'Clear this chat’s workflow'}>↺</button></div></header>
   <main aria-label="Workflow">
     {#if error}<p class="notice" role="status">{error}</p>{/if}
     {#if updateMode === 'disabled'}<div class="empty"><p>Updates disabled</p></div>{:else}
     {#if windows.saved.length}<div class="history-control"><button onclick={() => toggleHistory()}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
     <div class="workflow-layout" class:interactive={design === 'interactive'}>
-    <GraphCanvas {steps} {selected} {reveal} localScroll={design === 'interactive'} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
+    <GraphCanvas {steps} {selected} {reveal} localScroll={design === 'interactive'} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (shared ? 18 : 0) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
       {#snippet detail(step)}
         {#if design === 'minimal'}
         <section class="step-detail" aria-label="Why this step">
+          {#if shared}<small class="contributor">{step.agent_id === 'filesystem' ? 'Observed file change' : step.agent_id}</small>{/if}
           <p>{step.why || (step.source === 'watcher' ? 'The agent hasn’t explained this save yet.' : 'The agent hasn’t explained this step yet.')}</p>
           <small class="file" title={step.node_name}>{step.node_name === '@workflow' ? 'Current task' : step.node_name}</small>
           {#if step.explanation_pending}
@@ -265,6 +312,7 @@
       <div class="interactive-detail" role="region" aria-label="Selected file properties" tabindex="0" bind:this={detailsViewport}>
         {#if inspecting}<div class="inspection-control"><span>{pendingFollow ? 'New work is waiting.' : 'Exploring this change.'}</span><button onclick={resumeFollowing} disabled={diffOpen || Boolean(note.trim())} title={note.trim() ? 'Send or discard your suggestion first.' : 'Follow the latest work again.'}>Return to latest</button></div>{/if}
         {#if chosen}
+          {#if shared}<small class="shared-contributor">{chosen.agent_id === 'filesystem' ? 'Observed file change' : chosen.agent_id}</small>{/if}
           <ChangeVisual step={chosen} {steps} oninspect={inspectChange} onsuggest={suggestSelection} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
           <section class="step-detail" aria-label="Suggest for this step">
             {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: chosen.node_name })}>Open {shortName(chosen.node_name)}</button>{/if}
@@ -282,3 +330,9 @@
 </div>
 {#if diffOpen && chosen && hasFileDiff(chosen)}<FileDiff step={design === 'interactive' ? { ...chosen, why: chosen.explanation || chosen.why } : chosen} onclose={() => diffOpen = false} />{/if}
 <svelte:window onkeydown={event => { if (event.key === 'Escape') dismissSelection(); }} />
+
+<style>
+  .brand-group { display: flex; align-items: center; gap: 8px; }
+  .contributor { margin-bottom: 4px; }
+  .shared-contributor { display: block; color: var(--faint); font-size: 10px; padding: 10px 20px 0; overflow-wrap: anywhere; }
+</style>

@@ -1,17 +1,44 @@
 import { test, expect, type APIRequestContext, type Page, type Locator } from '@playwright/test';
-import { writeFile, unlink } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { writeFile as filesystemWrite, unlink as filesystemUnlink } from 'node:fs/promises';
+import { resolve, relative } from 'node:path';
 
 const report = (session: string, node: string, summary: string, why: string, parents: string[] = []) => ({ session_id: session, agent_id: 'test-agent', node_name: node, action: 'modified', summary, why, status: 'ready', parents });
 type UpdateMode = 'milestones' | 'files' | 'disabled';
 type SavedEvent = { id: string; source: string; kind?: string; node_name: string; action: string; before?: string; after?: string; change_id?: string; diff?: string };
 
-// The mode belongs to the daemon, so reset it rather than relying on browser isolation.
+// Reset the current workspace before each independent browser scenario.
 test.beforeEach(async ({ request }) => {
   const response = await request.post('/api/settings', { data: { update_mode: 'files' } });
   expect(response.ok()).toBe(true);
   expect(await response.json()).toEqual({ update_mode: 'files' });
 });
+
+// Tests supply concrete saved paths as a trusted editor hook would. A root-wide
+// file observer cannot identify which private agent wrote a file on its own.
+async function claimSavedPath(file: string, content?: string) {
+  const response = await fetch('http://127.0.0.1:4821/api/events');
+  const snapshot = await response.json();
+  const path = relative(snapshot.repo, file);
+  if (snapshot.update_mode === 'files') await expect.poll(async () => {
+    const observed = await (await fetch('http://127.0.0.1:4821/api/events?session_id=local')).json();
+    const revision = (observed.events ?? []).filter((event: SavedEvent) => event.source === 'watcher' && event.kind === 'file' && event.node_name === path).at(-1);
+    if (content === undefined) return revision?.action === 'deleted';
+    if (!revision || revision.action === 'deleted') return false;
+    const captured = revision.after ?? '';
+    return captured === content || (captured.endsWith('\n… [truncated]') && content.startsWith(captured.slice(0, -'\n… [truncated]'.length)));
+  }, { timeout: 10000 }).toBe(true);
+  const reminder = await fetch('http://127.0.0.1:4821/api/explanation-reminder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: snapshot.session_id, paths: [relative(snapshot.repo, file)], settle_ms: 300 }) });
+  expect(reminder.ok).toBe(true);
+}
+async function writeFile(file: string, data: string) { await filesystemWrite(file, data); await claimSavedPath(file, data); }
+async function unlink(file: string) { await filesystemUnlink(file); await claimSavedPath(file); }
+async function selectSession(page: Page, request: APIRequestContext, session: string) {
+  const response = await request.post('/api/sessions/activate', { data: { session_id: session } });
+  expect(response.ok()).toBe(true);
+  const url = new URL(page.url()); url.searchParams.set('session_id', session);
+  await page.goto(url.toString());
+  await expect(page.getByRole('button', { name: 'Updates', exact: true })).toBeEnabled();
+}
 
 async function savedEvents(request: APIRequestContext, session: string): Promise<SavedEvent[]> {
   const response = await request.get('/api/events', { params: { session_id: session } });
@@ -106,7 +133,7 @@ test('the minimal live workflow has arrows, brief reasons and an inline suggesti
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?companion=1');
   await expect(page).toHaveTitle('stef');
-  await request.post('/api/sessions/activate', { data: { session_id: 'minimal-chat' } });
+  await selectSession(page, request, 'minimal-chat');
   await expect(page.getByText('Listening…')).toBeVisible();
   const snapshot = await (await request.get('/api/events')).json();
   const root = resolve(snapshot.repo);
@@ -148,7 +175,7 @@ test('every saved file appears automatically and each revision gets its own expl
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?companion=1');
   const session = 'automatic-file-changes';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await expect(page.getByText('Listening…')).toBeVisible();
   const snapshot = await (await request.get('/api/events')).json();
   const root = resolve(snapshot.repo);
@@ -194,27 +221,27 @@ test('every saved file appears automatically and each revision gets its own expl
 
 test('new chats reset, resumed chats restore, and Clear affects only that chat', async ({ page, request }) => {
   await page.goto('/');
-  await request.post('/api/sessions/activate', { data: { session_id: 'chat-a' } });
+  await selectSession(page, request, 'chat-a');
   await request.post('/api/events', { data: report('chat-a', 'a.go', 'Update the handler', 'Keep validation at the boundary.') });
   await expect(page.getByRole('button', { name: /Update the handler/ })).toBeVisible();
   await chooseStep(page.getByRole('button', { name: /Update the handler/ }));
-  await request.post('/api/sessions/activate', { data: { session_id: 'chat-b' } });
+  await selectSession(page, request, 'chat-b');
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Why this step' })).toHaveCount(0);
   await request.post('/api/events', { data: report('chat-b', 'b.go', 'Check the retry limit', 'Retries must stop eventually.') });
-  await request.post('/api/sessions/activate', { data: { session_id: 'chat-a' } });
+  await selectSession(page, request, 'chat-a');
   await expect(page.getByRole('button', { name: /Update the handler/ })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Keep validation at the boundary.');
   await page.getByRole('button', { name: 'Clear this chat’s workflow' }).click();
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   await page.reload();
   await expect(page.getByText('Listening…')).toBeVisible();
-  await request.post('/api/sessions/activate', { data: { session_id: 'chat-b' } });
+  await selectSession(page, request, 'chat-b');
   await expect(page.getByRole('button', { name: /Check the retry limit/ })).toBeVisible();
   await request.post('/api/events', { data: report('chat-a', 'fresh.go', 'Start a fresh step', 'Continue after clearing.') });
   await expect(page.getByTestId('workflow-step')).toHaveCount(1);
   await expect(page.getByRole('button', { name: /Check the retry limit/ })).toBeVisible();
-  await request.post('/api/sessions/activate', { data: { session_id: 'chat-a' } });
+  await selectSession(page, request, 'chat-a');
   await expect(page.getByRole('button', { name: /Start a fresh step/ })).toBeVisible();
   await expect(page.getByTestId('workflow-arrow')).toHaveCount(0);
 });
@@ -224,7 +251,7 @@ test('appearance changes the whole workflow and survives reload, chat switching 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/?companion=1');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await request.post('/api/sessions/activate', { data: { session_id: 'theme-chat-a' } });
+  await selectSession(page, request, 'theme-chat-a');
   await request.post('/api/events', { data: report('theme-chat-a', 'entry.ts', 'Find the palette', 'The workflow shares its page colors.') });
   await request.post('/api/events', { data: report('theme-chat-a', 'palette.ts', 'Check readability', 'Keep labels and arrows visible in every appearance.', ['entry.ts']) });
   const selected = page.getByRole('button', { name: 'Check readability', exact: true });
@@ -302,7 +329,7 @@ test('appearance changes the whole workflow and survives reload, chat switching 
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
   await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Keep labels and arrows visible in every appearance.');
-  await request.post('/api/sessions/activate', { data: { session_id: 'theme-chat-b' } });
+  await selectSession(page, request, 'theme-chat-b');
   await expect(page.getByText('Listening…')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'comfort');
   await request.post('/api/events', { data: report('theme-chat-b', 'fresh.ts', 'Try a new chat', 'Appearance belongs to the view, not this chat.') });
@@ -310,7 +337,7 @@ test('appearance changes the whole workflow and survives reload, chat switching 
   await page.getByRole('button', { name: 'Clear this chat’s workflow' }).click();
   await expect(page.getByText('Listening…')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'comfort');
-  await request.post('/api/sessions/activate', { data: { session_id: 'theme-chat-a' } });
+  await selectSession(page, request, 'theme-chat-a');
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
   await appearance.click();
@@ -332,7 +359,7 @@ test('appearance changes the whole workflow and survives reload, chat switching 
 test('mode changes start a future reporting window while saved history remains available on demand', async ({ page, request }) => {
   const session = 'updates-milestones';
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'updates-original.ts');
   await writeFile(file, 'export const mode = "files";\n');
@@ -409,7 +436,7 @@ test('mode changes start a future reporting window while saved history remains a
 test('Disabled stops recording and delivery; re-enabling exposes future work and optional saved history', async ({ page, request }) => {
   const session = 'updates-disabled';
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'updates-disabled-revision.ts');
   await writeFile(file, 'export const state = "enabled";\n');
@@ -476,40 +503,36 @@ test('Disabled stops recording and delivery; re-enabling exposes future work and
   expect(events.some(event => ['updates-disabled-only.ts', 'updates-disabled-hook.ts', 'updates-ignored.ts'].includes(event.node_name))).toBe(false);
 });
 
-test('Updates is shared between views and survives reload, appearance, chat switching and Clear', async ({ page, context, request }) => {
+test('Updates is shared by views of the same workspace and stays independent in other chats', async ({ page, context, request }) => {
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: 'updates-chat-a' } });
-  await request.post('/api/events', { data: report('updates-chat-a', '@workflow', 'Review update settings', 'The preference belongs to this project rather than an individual chat.') });
+  await selectSession(page, request, 'updates-chat-a');
+  await request.post('/api/events', { data: report('updates-chat-a', '@workflow', 'Review update settings', 'Each workspace chooses how much future work to record.') });
   await expect(page.getByTestId('workflow-step')).toHaveCount(1);
   const second = await context.newPage();
-  await second.goto('/?companion=1');
+  await second.goto('/?companion=1&session_id=updates-chat-a');
   await expect(second.getByTestId('workflow-step')).toHaveCount(1);
   await pickUpdates(page, 'milestones');
   await expect(second.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
-  expect(await (await request.get('/api/settings')).json()).toEqual({ update_mode: 'milestones' });
+  expect(await (await request.get('/api/settings', { params: { session_id: 'updates-chat-a' } })).json()).toEqual({ update_mode: 'milestones' });
   await second.reload();
   await expect(second.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
   await page.getByRole('button', { name: /appearance/i }).click();
   await page.getByRole('menuitemradio', { name: 'Light', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
-  await request.post('/api/sessions/activate', { data: { session_id: 'updates-chat-b' } });
+  await selectSession(page, request, 'updates-chat-b');
   await expect(page.getByText('Listening…')).toBeVisible();
-  await expect(second.getByText('Listening…')).toBeVisible();
-  await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
-  await request.post('/api/events', { data: report('updates-chat-b', '@workflow', 'Start a separate chat', 'Each chat still keeps its own workflow history.') });
+  await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', 'files');
+  await expect(second.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
+  await request.post('/api/events', { data: report('updates-chat-b', '@workflow', 'Start a separate chat', 'Each chat keeps its own workflow history and update setting.') });
   await expect(page.getByTestId('workflow-step')).toHaveCount(1);
   await page.getByRole('button', { name: 'Clear this chat’s workflow' }).click();
   await expect(page.getByText('Listening…')).toBeVisible();
-  await expect(second.getByText('Listening…')).toBeVisible();
-  expect(await (await request.get('/api/settings')).json()).toEqual({ update_mode: 'milestones' });
-  await request.post('/api/sessions/activate', { data: { session_id: 'updates-chat-a' } });
-  await expect(page.getByRole('button', { name: 'Hide saved history', exact: true })).toBeVisible();
+  await selectSession(page, request, 'updates-chat-a');
+  await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Review update settings', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await pickUpdates(second, 'disabled');
   await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', 'disabled');
-  await expect(page.getByText('Updates disabled', { exact: true })).toBeVisible();
   await pickUpdates(page, 'files');
   await expect(second.locator('.stef-app')).toHaveAttribute('data-update-mode', 'files');
   await expect(second.getByTestId('workflow-step')).toHaveCount(0);
@@ -521,7 +544,7 @@ test('Updates is shared between views and survives reload, appearance, chat swit
 test('the compact Updates menu explains token cost and handles keyboard, narrow layouts and save failures', async ({ page, request }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: 'updates-menu' } });
+  await selectSession(page, request, 'updates-menu');
   await request.post('/api/events', { data: report('updates-menu', '@workflow', 'Keep controls simple', 'Update frequency should take one small menu rather than a dashboard.') });
   const selected = page.getByRole('button', { name: 'Keep controls simple', exact: true });
   await chooseStep(selected);
@@ -558,7 +581,7 @@ test('the compact Updates menu explains token cost and handles keyboard, narrow 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: '../artifacts/stef-updates-menu.png', fullPage: true });
 
-  await page.route('**/api/settings', async route => {
+  await page.route('**/api/settings*', async route => {
     if (route.request().method() === 'POST') await route.fulfill({ status: 500, body: 'Setting could not be saved.' });
     else await route.continue();
   });
@@ -568,7 +591,7 @@ test('the compact Updates menu explains token cost and handles keyboard, narrow 
   await expect(files).toHaveAttribute('aria-checked', 'true');
   await expect(menu.getByRole('menuitemradio', { name: /^Major milestones/ })).toBeEnabled();
   expect(await (await request.get('/api/settings')).json()).toEqual({ update_mode: 'files' });
-  await page.unroute('**/api/settings');
+  await page.unroute('**/api/settings*');
   await menu.getByRole('menuitemradio', { name: /^Major milestones/ }).click();
   await expect(menu).toHaveCount(0);
   await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', 'milestones');
@@ -586,7 +609,7 @@ test('Design is local, keeps selection and suggestion drafts, and survives reloa
   await page.goto('/?companion=1');
   await expect(page.locator('.stef-app')).toHaveAttribute('data-design', 'minimal');
   const session = 'design-chat-a';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await request.post('/api/events', { data: { ...report(session, 'entry.ts', 'Explore the entry', 'Find where this task begins.'), action: 'scouted' } });
   await request.post('/api/events', { data: report(session, 'design.ts', 'Connect the local design', 'Render the same saved work in a richer local view.', ['entry.ts']) });
   const selected = page.getByRole('button', { name: 'Connect the local design', exact: true });
@@ -628,11 +651,11 @@ test('Design is local, keeps selection and suggestion drafts, and survives reloa
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'comfort');
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('region', { name: 'Selected change' })).toContainText('Render the same saved work in a richer local view.');
-  await request.post('/api/sessions/activate', { data: { session_id: 'design-chat-b' } });
+  await selectSession(page, request, 'design-chat-b');
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
   await expect(page.locator('.stef-app')).toHaveAttribute('data-design', 'interactive');
   await expect(page.getByRole('region', { name: 'Selected change' })).toHaveCount(0);
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await expect(selected).toHaveAttribute('aria-pressed', 'true');
   const panel = page.getByRole('region', { name: 'Selected change' });
   await expect(panel).toContainText('Render the same saved work in a richer local view.');
@@ -655,7 +678,7 @@ test('Interactive shows exact local revisions and requests more agent context on
   page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
   await page.goto('/?companion=1');
   const session = 'interactive-exact-revision';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'interactive-source.ts');
   const fileSteps = page.locator('[data-testid="workflow-step"][title^="interactive-source.ts"]');
@@ -750,7 +773,7 @@ for (const width of [860, 360]) {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/?companion=1');
     const session = 'interactive-pane-scroll-' + width;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     await pickDesign(page, 'interactive');
     const root = await isolatedRoot(request);
     await Promise.all(Array.from({ length: 24 }, (_, index) => writeFile(resolve(root, 'scroll-' + width + '-' + index + '.ts'), 'export const filler = true;\n')));
@@ -809,7 +832,7 @@ test('Interactive keyboard and touch scrolling stay in the selected pane', async
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/?companion=1');
   const session = 'interactive-pane-input';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await pickDesign(page, 'interactive');
   const root = await isolatedRoot(request);
   await Promise.all(Array.from({ length: 20 }, (_, index) => writeFile(resolve(root, 'input-scroll-' + index + '.ts'), 'export const filler = true;\n')));
@@ -867,7 +890,7 @@ test('Interactive change exploration stays local and drafts an exact line sugges
   page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
   await page.goto('/?companion=1');
   const session = 'interactive-explore-change';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await pickDesign(page, 'interactive');
   const root = await isolatedRoot(request);
   const name = 'explore-line.ts';
@@ -926,7 +949,7 @@ test('style samples render exact small dimensions and real layout gaps', async (
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/?companion=1');
   const session = 'interactive-small-style-effect';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await pickDesign(page, 'interactive');
   const root = await isolatedRoot(request);
   const file = resolve(root, 'small-style-effect.css');
@@ -963,7 +986,7 @@ test('Interactive previews a safe exact style effect with working comparison con
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/?companion=1');
   const session = 'interactive-style-effect';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await pickDesign(page, 'interactive');
   const root = await isolatedRoot(request);
   const name = 'style-effect.css';
@@ -1025,7 +1048,7 @@ for (const design of ['minimal', 'interactive'] as const) {
     await page.setViewportSize({ width: 860, height: 640 });
     await page.goto('/?companion=1');
     const session = 'follow-live-' + design;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     await pickDesign(page, design);
     const root = await isolatedRoot(request);
     const firstName = 'follow-' + design + '-first.ts';
@@ -1081,7 +1104,7 @@ for (const design of ['minimal', 'interactive'] as const) {
     page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
     await page.goto('/?companion=1');
     const session = 'follow-draft-boundary-' + design;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     await pickDesign(page, design);
     const root = await isolatedRoot(request);
     const file = resolve(root, 'draft-boundary-' + design + '.ts');
@@ -1131,7 +1154,7 @@ for (const design of ['minimal', 'interactive'] as const) {
     await page.setViewportSize({ width: 860, height: 640 });
     await page.goto('/?companion=1');
     const session = 'follow-inspection-' + design;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     await pickDesign(page, design);
     const root = await isolatedRoot(request);
     const name = 'inspection-' + design + '.ts';
@@ -1196,7 +1219,7 @@ test('Interactive wraps exact Git-style additions and removals without horizonta
   page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
   await page.goto('/?companion=1');
   const session = 'interactive-unified-wrapping';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const name = 'unified-wrapped.ts';
   const file = resolve(root, name);
@@ -1283,7 +1306,7 @@ for (const recovery of [{ design: 'minimal', reply: 'changes' }, { design: 'inte
     page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
     await page.goto('/?companion=1');
     const session = 'missing-reason-' + recovery.design;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     const root = await isolatedRoot(request);
     const name = 'missing-reason-' + recovery.design + '.ts';
     const file = resolve(root, name);
@@ -1383,7 +1406,7 @@ test('missing-explanation requests reset on reporting windows, chat changes and 
   });
   await page.goto('/?companion=1');
   const session = 'missing-reason-boundaries';
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const name = 'missing-reason-boundaries.ts';
   const file = resolve(root, name);
@@ -1432,9 +1455,9 @@ test('missing-explanation requests reset on reporting windows, chat changes and 
   await chooseStep(fileSteps);
   await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
-  await request.post('/api/sessions/activate', { data: { session_id: 'missing-reason-other-chat' } });
+  await selectSession(page, request, 'missing-reason-other-chat');
   await expect(page.getByTestId('workflow-step')).toHaveCount(0);
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   await expect(fileSteps).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
@@ -1459,7 +1482,7 @@ test('old unexplained files never re-enter pending reporting after milestones or
   const root = await isolatedRoot(request);
   for (const mode of ['milestones', 'disabled'] as const) {
     const session = 'future-only-' + mode;
-    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await selectSession(page, request, session);
     const name = 'future-only-' + mode + '.ts';
     const file = resolve(root, name);
     const fileSteps = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
@@ -1482,7 +1505,7 @@ test('old unexplained files never re-enter pending reporting after milestones or
     expect(resumed.pending_changes).toEqual([]);
     expect(resumed.pending_count).toBe(0);
     expect(resumed.events).toEqual([]);
-    const noop = await request.post('/api/settings', { data: { update_mode: 'files' } });
+    const noop = await request.post('/api/settings', { data: { session_id: session, update_mode: 'files' } });
     expect(await noop.json()).toEqual({ update_mode: 'files' });
     expect((await checkIn(request, session)).updates_from).toBe(resumed.updates_from);
     await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
@@ -1516,7 +1539,7 @@ test('file diffs keep exact additions, removals and AI explanations for each sav
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const session = 'file-diff-revisions';
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'diff-revisions.txt');
   const fileSteps = page.locator('[data-testid="workflow-step"][title^="diff-revisions.txt"]');
@@ -1602,10 +1625,10 @@ test('file diffs keep exact additions, removals and AI explanations for each sav
   await page.screenshot({ path: '../artifacts/stef-file-diff-deleted.png', fullPage: true });
   // A mode changed in another view closes this dialog without reopening it later.
   for (const mode of ['milestones', 'disabled']) {
-    await request.post('/api/settings', { data: { update_mode: mode } });
+    await request.post('/api/settings', { data: { session_id: session, update_mode: mode } });
     await expect(page.locator('.stef-app')).toHaveAttribute('data-update-mode', mode);
     await expect(dialog).toHaveCount(0);
-    await request.post('/api/settings', { data: { update_mode: 'files' } });
+    await request.post('/api/settings', { data: { session_id: session, update_mode: 'files' } });
     await expect(page.getByTestId('workflow-step')).toHaveCount(0);
     await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
     await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
@@ -1619,7 +1642,7 @@ test('diff source stays escaped and readable in narrow light and eye comfort vie
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const session = 'file-diff-escaped';
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'diff-source.ts');
   const fileSteps = page.locator('[data-testid="workflow-step"][title^="diff-source.ts"]');
@@ -1675,7 +1698,7 @@ test('diff source stays escaped and readable in narrow light and eye comfort vie
 test('empty file revisions have no invented lines and milestones without captured code have no diff control', async ({ page, request }) => {
   const session = 'file-diff-empty';
   await page.goto('/?companion=1');
-  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await selectSession(page, request, session);
   const root = await isolatedRoot(request);
   const file = resolve(root, 'diff-empty.txt');
   const fileSteps = page.locator('[data-testid="workflow-step"][title^="diff-empty.txt"]');
@@ -1712,7 +1735,7 @@ test('the optional embedded host still receives file-open actions without a brow
       }, 0);
     } });
   });
-  await page.goto('/');
+  await page.goto('/?session_id=embedded');
   await chooseStep(page.getByTestId('workflow-step'));
   await page.getByRole('button', { name: 'Open main.go' }).click();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { stefMessages: { type: string }[] }).stefMessages.some(message => message.type === 'stef.openFile'))).toBe(true);

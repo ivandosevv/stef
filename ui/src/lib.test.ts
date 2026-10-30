@@ -47,6 +47,12 @@ describe('simple workflow', () => {
     expect(steps[2].why).toBe('');
     expect(steps[2].explanation_pending).toBe(true);
   });
+  it('attributes an exact shared explanation to its reporter without inventing a watcher author', () => {
+    const captured = event(1, 'shared.ts', { session_id: 'room', source: 'watcher', kind: 'file', agent_id: 'filesystem' });
+    expect(workflowSteps([captured])[0].agent_id).toBe('filesystem');
+    const explained = workflowSteps([captured, event(2, 'shared.ts', { session_id: 'room', change_id: '1', agent_id: 'claude', why: 'Keep the shared boundary consistent.' })]);
+    expect(explained[0]).toMatchObject({ agent_id: 'claude', why: 'Keep the shared boundary consistent.', id: '1' });
+  });
   it('does not reuse a reason from another file, revision, or chat', () => {
     const steps = workflowSteps([
       event(1, 'theme.ts', { session_id: 'a', source: 'watcher', kind: 'file' }),

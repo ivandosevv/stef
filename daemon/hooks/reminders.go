@@ -29,8 +29,24 @@ func Run(ctx context.Context, endpoint, clientName string, input io.Reader, outp
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	delivered, err := forward(ctx, endpoint, clientName, input, true)
-	if err != nil || output == nil || delivered.activity.SessionID == "" || delivered.activity.Phase != "tool_done" {
+	if err != nil || output == nil || delivered.activity.SessionID == "" {
 		return err
+	}
+	if delivered.activity.Phase == "started" && (clientName == "claude" || clientName == "codex") {
+		var input struct {
+			Event string `json:"hook_event_name"`
+		}
+		if json.Unmarshal(delivered.raw, &input) != nil || (input.Event != "SessionStart" && input.Event != "UserPromptSubmit") {
+			return nil
+		}
+		metadata, _ := json.Marshal(struct {
+			SessionID string `json:"session_id"`
+			AgentID   string `json:"agent_id"`
+		}{delivered.activity.SessionID, delivered.activity.AgentID})
+		return writeHookContext(output, input.Event, "stef worker identity: "+string(metadata)+". Bind this exact session_id with set_session, omitting agent_id there; use this session_id and agent_id for reports and check-ins. Each subagent needs its own worker identity. Share only through an explicit set_workspace join.")
+	}
+	if delivered.activity.Phase != "tool_done" {
+		return nil
 	}
 	paths, omittedPaths := reminderPaths(clientName, delivered.raw, delivered.root)
 	if len(paths) == 0 {
@@ -106,6 +122,10 @@ func Run(ctx context.Context, endpoint, clientName string, input io.Reader, outp
 	if context == "" {
 		return nil
 	}
+	return writeHookContext(output, "PostToolUse", context)
+}
+
+func writeHookContext(output io.Writer, event, context string) error {
 	return json.NewEncoder(output).Encode(struct {
 		Output struct {
 			Event   string `json:"hookEventName"`
@@ -114,7 +134,7 @@ func Run(ctx context.Context, endpoint, clientName string, input io.Reader, outp
 	}{Output: struct {
 		Event   string `json:"hookEventName"`
 		Context string `json:"additionalContext"`
-	}{"PostToolUse", context}})
+	}{event, context}})
 }
 
 // reminderPaths accepts concrete file-edit schemas only. Terminal commands,

@@ -22,7 +22,7 @@ import (
 type Input struct {
 	ChangeID  string   `json:"change_id,omitempty" jsonschema:"optional exact whole-file observation ID"`
 	ContextID string   `json:"context_id,omitempty" jsonschema:"retained visible step ID; only to answer an explicit developer request for a missing reason or extra context"`
-	SessionID string   `json:"session_id,omitempty" jsonschema:"chat ID returned by set_session; omit only when hooks select the chat"`
+	SessionID string   `json:"session_id,omitempty" jsonschema:"origin session ID returned by set_session or get_state; retain it across turns"`
 	AgentID   string   `json:"agent_id" jsonschema:"stable reporter ID"`
 	NodeName  string   `json:"node_name" jsonschema:"relative path or path#symbol"`
 	Action    string   `json:"action" jsonschema:"scouted, created, modified, deleted, tested"`
@@ -45,7 +45,7 @@ type Receipt struct {
 	PendingCount          int                       `json:"pending_count"`
 }
 type ChangesInput struct {
-	SessionID string                        `json:"session_id,omitempty" jsonschema:"chat ID; defaults to the active chat"`
+	SessionID string                        `json:"session_id,omitempty" jsonschema:"origin session ID; defaults to this worker private workflow"`
 	AgentID   string                        `json:"agent_id" jsonschema:"stable reporter ID"`
 	Changes   []telemetry.ChangeExplanation `json:"changes" jsonschema:"one to fifty exact file-change explanations"`
 }
@@ -60,12 +60,14 @@ type ChangesReceipt struct {
 	PendingCount          int                       `json:"pending_count"`
 }
 type StateInput struct {
-	SessionID string `json:"session_id,omitempty" jsonschema:"chat ID; defaults to the active chat"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"recent events, default 10, maximum 50"`
-	AgentID   string `json:"agent_id,omitempty" jsonschema:"optional stable reporter ID to receive pending developer notes at this check-in"`
-	SettleMS  int    `json:"settle_ms,omitempty" jsonschema:"optional bounded delay after editing for watcher debounce, zero to 1000 milliseconds"`
+	ChangedPaths []string `json:"changed_paths,omitempty" jsonschema:"actual relative paths saved by this worker; claims only these exact observed revisions"`
+	SessionID    string   `json:"session_id,omitempty" jsonschema:"origin session ID; defaults to this worker private workflow"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"recent events, default 10, maximum 50"`
+	AgentID      string   `json:"agent_id,omitempty" jsonschema:"optional stable reporter ID to receive pending developer notes at this check-in"`
+	SettleMS     int      `json:"settle_ms,omitempty" jsonschema:"optional bounded delay after editing for watcher debounce, zero to 1000 milliseconds"`
 }
 type StateEvent struct {
+	Why      string `json:"why,omitempty"`
 	AgentID  string `json:"agent_id"`
 	NodeName string `json:"node_name"`
 	Summary  string `json:"summary"`
@@ -73,6 +75,9 @@ type StateEvent struct {
 	Phase    string `json:"phase,omitempty"`
 }
 type State struct {
+	WorkspaceID           string                    `json:"workspace_id"`
+	Shared                bool                      `json:"shared"`
+	Members               []string                  `json:"members"`
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
 	UpdatesFrom           string                    `json:"updates_from"`
 	ReportingInstructions string                    `json:"reporting_instructions"`
@@ -98,11 +103,14 @@ type backend interface {
 	state(context.Context, StateInput) (State, error)
 	changes(context.Context, ChangesInput) (ChangesReceipt, error)
 	activate(context.Context, string) (SessionReceipt, error)
+	workspace(context.Context, hub.WorkspaceInput) (hub.Workspace, error)
 }
 type SessionInput struct {
+	AgentID   string `json:"agent_id,omitempty" jsonschema:"stable unique worker ID; use a distinct ID for every subagent"`
 	SessionID string `json:"session_id" jsonschema:"stable ID for this chat; reuse the same ID when resuming it"`
 }
 type SessionReceipt struct {
+	WorkspaceID           string               `json:"workspace_id"`
 	SessionID             string               `json:"session_id"`
 	UpdateMode            telemetry.UpdateMode `json:"update_mode"`
 	UpdatesFrom           string               `json:"updates_from"`
@@ -125,8 +133,11 @@ func (b localBackend) changes(_ context.Context, input ChangesInput) (ChangesRec
 	return ReportChanges(b.hub, input)
 }
 func (b localBackend) activate(_ context.Context, id string) (SessionReceipt, error) {
-	snapshot, err := b.hub.ActivateSession(id)
-	return SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, err
+	snapshot, err := b.hub.RegisterSession(id)
+	return SessionReceipt{SessionID: id, WorkspaceID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, err
+}
+func (b localBackend) workspace(_ context.Context, input hub.WorkspaceInput) (hub.Workspace, error) {
+	return b.hub.ConfigureWorkspace(input)
 }
 func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	id := ""
@@ -134,8 +145,13 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 		id = session[0]
 	}
 	s := h.SessionSnapshot(id)
+	origin := id
+	if origin == "" {
+		origin = s.SessionID
+	}
+	workspace := workspaceDetails(h, s.SessionID)
 	if s.UpdateMode == telemetry.UpdatesDisabled {
-		return State{SessionID: s.SessionID, Repo: s.Repo, UpdateMode: s.UpdateMode, UpdatesFrom: s.UpdatesFrom, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
+		return State{SessionID: origin, WorkspaceID: s.SessionID, Shared: workspace.Shared, Members: workspace.Members, Repo: s.Repo, UpdateMode: s.UpdateMode, UpdatesFrom: s.UpdatesFrom, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
 	}
 	visible := make([]telemetry.Event, 0, len(s.Events))
 	from, _ := strconv.ParseUint(s.UpdatesFrom, 10, 64)
@@ -149,8 +165,11 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 		}
 		visible = append(visible, event)
 	}
-	state := compact(s.Repo, visible, limit)
-	state.SessionID = s.SessionID
+	state := compact(s.Repo, visible, limit, workspace.Shared)
+	state.SessionID = origin
+	state.WorkspaceID = s.SessionID
+	state.Shared = workspace.Shared
+	state.Members = workspace.Members
 	state.UpdateMode = s.UpdateMode
 	state.UpdatesFrom = s.UpdatesFrom
 	state.ReportingInstructions = s.UpdateMode.ReportingInstructions()
@@ -161,7 +180,7 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	}
 	return state
 }
-func compact(repo string, events []telemetry.Event, limit int) State {
+func compact(repo string, events []telemetry.Event, limit int, shared ...bool) State {
 	filtered := make([]telemetry.Event, 0, len(events))
 	for _, e := range events {
 		if e.Category != "feedback" {
@@ -174,21 +193,35 @@ func compact(repo string, events []telemetry.Event, limit int) State {
 	}
 	state := State{Repo: repo, Events: make([]StateEvent, 0, len(events))}
 	for _, e := range events {
-		state.Events = append(state.Events, StateEvent{AgentID: e.AgentID, NodeName: e.NodeName, Summary: e.Summary, Status: e.Status, Phase: e.Phase})
+		step := StateEvent{AgentID: e.AgentID, NodeName: e.NodeName, Summary: e.Summary, Status: e.Status, Phase: e.Phase}
+		if len(shared) > 0 && shared[0] && e.Source == "agent" {
+			step.Why = e.Why
+		}
+		state.Events = append(state.Events, step)
 	}
 	return state
 }
 func newServer(b backend) *sdk.Server {
 	no := false
-	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: prepare brief reasons with the edit; after EACH edit tool, use hook pending IDs or get_state once with settle_ms=300 and report_changes for every own exact change_id before another edit, test, or final reply. Sequence edit, check-in, and report in one orchestration call when available, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. updates_from is the inclusive first event ID of the current reporting window. Mode changes never request older saved-file explanations; omit pre-window IDs from automatic report_changes batches. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Design choices render local evidence and do not increase reporting volume. Only when a developer explicitly requests a missing reason or more context, answer with report_event context_id matching their exact retained ID, node_name, and action; this is allowed in milestones but not disabled. Do not generate extra context automatically; do not combine context_id with change_id. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
-	sdk.AddTool(server, &sdk.Tool{Name: "set_session", Description: "Select this chat's workflow once on new chat or resume. New IDs start empty; existing IDs restore saved steps."}, func(ctx context.Context, _ *sdk.CallToolRequest, input SessionInput) (*sdk.CallToolResult, SessionReceipt, error) {
+	identities := newIdentityBindings()
+	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. Each worker has its own private workflow by default. Call set_session once with the original stable chat ID and unique agent_id; retain the returned session_id for all other tools. Every subagent uses a distinct agent_id. Only share when requested: set_workspace create returns an ID; each cooperating worker joins using its own session_id and that workspace_id; leave restores private history. Shared get_state includes brief peer reasons at natural check-ins. Use trusted hook session IDs verbatim when supplied. MCP reconnects alone cannot identify resumed chats. After editing, include changed_paths with only this worker actual saved paths when trusted hooks provide no exact IDs. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: prepare brief reasons with the edit; after EACH edit tool, use hook pending IDs or get_state once with settle_ms=300 and report_changes for every own exact change_id before another edit, test, or final reply. Sequence edit, check-in, and report in one orchestration call when available, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. updates_from is the inclusive first event ID of the current reporting window. Mode changes never request older saved-file explanations; omit pre-window IDs from automatic report_changes batches. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Design choices render local evidence and do not increase reporting volume. Only when a developer explicitly requests a missing reason or more context, answer with report_event context_id matching their exact retained ID, node_name, and action; this is allowed in milestones but not disabled. Do not generate extra context automatically; do not combine context_id with change_id. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
+	sdk.AddTool(server, &sdk.Tool{Name: "set_session", Description: "Select a private chat/worker workflow. Use the original stable chat ID and unique agent_id on resume; retain the returned session_id for other tools."}, func(ctx context.Context, req *sdk.CallToolRequest, input SessionInput) (*sdk.CallToolResult, SessionReceipt, error) {
 		if err := telemetry.Session(input.SessionID); err != nil {
 			return nil, SessionReceipt{}, err
 		}
-		result, err := b.activate(ctx, input.SessionID)
+		id, err := identities.selectSession(req, input)
+		if err != nil {
+			return nil, SessionReceipt{}, err
+		}
+		result, err := b.activate(ctx, id)
 		return nil, result, err
 	})
-	sdk.AddTool(server, &sdk.Tool{Name: "report_event", Description: "Share a meaningful workflow step as work starts; briefly update its result.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, _ *sdk.CallToolRequest, input Input) (*sdk.CallToolResult, Receipt, error) {
+	sdk.AddTool(server, &sdk.Tool{Name: "report_event", Description: "Share a meaningful workflow step as work starts; briefly update its result.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, req *sdk.CallToolRequest, input Input) (*sdk.CallToolResult, Receipt, error) {
+		id, err := identities.resolve(ctx, b, req, input.SessionID, input.AgentID)
+		if err != nil {
+			return nil, Receipt{}, err
+		}
+		input.SessionID = id
 		event, err := telemetry.Normalize(telemetry.Event{SessionID: input.SessionID, AgentID: input.AgentID, ChangeID: input.ChangeID, ContextID: input.ContextID, NodeName: input.NodeName, Action: input.Action, Summary: input.Summary, Why: input.Why, Status: input.Status, Parents: input.Parents})
 		if err != nil {
 			return nil, Receipt{}, err
@@ -199,11 +232,16 @@ func newServer(b backend) *sdk.Server {
 		}
 		return nil, Receipt{ID: stored.Event.ID, Accepted: stored.Accepted, UpdateMode: stored.UpdateMode, UpdatesFrom: stored.UpdatesFrom, ReportingInstructions: stored.ReportingInstructions, Collisions: stored.Event.Collisions, Feedback: stored.Feedback, PendingChanges: stored.PendingChanges, PendingCount: stored.PendingCount}, nil
 	})
-	sdk.AddTool(server, &sdk.Tool{Name: "report_changes", Description: "Explain every file revision changed by an edit in one batch. Use exact change_id values from pending_changes; do not omit entry points, tests, or docs.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, _ *sdk.CallToolRequest, input ChangesInput) (*sdk.CallToolResult, ChangesReceipt, error) {
+	sdk.AddTool(server, &sdk.Tool{Name: "report_changes", Description: "Explain every file revision changed by an edit in one batch. Use exact change_id values from pending_changes; do not omit entry points, tests, or docs.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, req *sdk.CallToolRequest, input ChangesInput) (*sdk.CallToolResult, ChangesReceipt, error) {
+		id, err := identities.resolve(ctx, b, req, input.SessionID, input.AgentID)
+		if err != nil {
+			return nil, ChangesReceipt{}, err
+		}
+		input.SessionID = id
 		result, err := b.changes(ctx, input)
 		return nil, result, err
 	})
-	sdk.AddTool(server, &sdk.Tool{Name: "get_state", Description: "Check compact recent activity when coordination is needed. Supply agent_id to receive pending developer notes once; do not poll.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, _ *sdk.CallToolRequest, input StateInput) (*sdk.CallToolResult, State, error) {
+	sdk.AddTool(server, &sdk.Tool{Name: "get_state", Description: "Check compact recent activity when coordination is needed. Supply agent_id to receive pending developer notes once; do not poll.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, req *sdk.CallToolRequest, input StateInput) (*sdk.CallToolResult, State, error) {
 		limit := input.Limit
 		if limit == 0 {
 			limit = 10
@@ -224,8 +262,21 @@ func newServer(b backend) *sdk.Server {
 		if input.SettleMS < 0 || input.SettleMS > 1000 {
 			return nil, State{}, fmt.Errorf("settle_ms must be 0–1000")
 		}
+		id, err := identities.resolve(ctx, b, req, input.SessionID, input.AgentID)
+		if err != nil {
+			return nil, State{}, err
+		}
+		input.SessionID = id
 		state, err := b.state(ctx, input)
 		return nil, state, err
+	})
+	sdk.AddTool(server, &sdk.Tool{Name: "set_workspace", Description: "Explicitly create, join, or leave a shared workflow. Preserves authors and private histories; no model calls."}, func(ctx context.Context, req *sdk.CallToolRequest, input WorkspaceInput) (*sdk.CallToolResult, WorkspaceReceipt, error) {
+		id, err := identities.resolve(ctx, b, req, input.SessionID, input.AgentID)
+		if err != nil {
+			return nil, WorkspaceReceipt{}, err
+		}
+		room, err := b.workspace(ctx, hub.WorkspaceInput{SessionID: id, Action: input.Action, WorkspaceID: input.WorkspaceID})
+		return nil, WorkspaceReceipt{SessionID: id, Workspace: room}, err
 	})
 	return server
 }
@@ -328,6 +379,29 @@ func (b remoteBackend) activate(ctx context.Context, id string) (SessionReceipt,
 	result := SessionReceipt{UpdatesFrom: "0"}
 	err = json.NewDecoder(io.LimitReader(response.Body, 1024)).Decode(&result)
 	return result, err
+}
+func (b remoteBackend) workspace(ctx context.Context, input hub.WorkspaceInput) (hub.Workspace, error) {
+	data, err := json.Marshal(input)
+	if err != nil {
+		return hub.Workspace{}, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/api/workspaces", bytes.NewReader(data))
+	if err != nil {
+		return hub.Workspace{}, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := b.client.Do(request)
+	if err != nil {
+		return hub.Workspace{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		message, _ := io.ReadAll(io.LimitReader(response.Body, 1000))
+		return hub.Workspace{}, fmt.Errorf("workspace rejected: %s", message)
+	}
+	var room hub.Workspace
+	err = json.NewDecoder(io.LimitReader(response.Body, 32*1024)).Decode(&room)
+	return room, err
 }
 func ValidateEndpoint(endpoint string) error {
 	parsed, err := url.Parse(endpoint)

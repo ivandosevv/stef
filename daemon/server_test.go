@@ -56,8 +56,24 @@ func TestDeveloperNotesDeliveredAtMCPCheckInAcrossTransports(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer session.Close()
+			origins := map[string]string{}
+			for _, agent := range []string{"alpha", "beta"} {
+				result, err := session.CallTool(ctx, &sdk.CallToolParams{Name: "get_state", Arguments: map[string]any{"agent_id": agent}})
+				if err != nil || result.IsError {
+					t.Fatalf("private check-in failed: %+v %v", result, err)
+				}
+				data, _ := json.Marshal(result.StructuredContent)
+				var state bridge.State
+				if err := json.Unmarshal(data, &state); err != nil {
+					t.Fatal(err)
+				}
+				origins[agent] = state.SessionID
+			}
+			if origins["alpha"] == origins["beta"] {
+				t.Fatal("private reporter identities collided")
+			}
 			post := func(target string) {
-				body, _ := json.Marshal(map[string]string{"target_agent": target, "kind": "concern", "text": "Check retry behavior before finishing.", "node_name": "main.go#Run"})
+				body, _ := json.Marshal(map[string]string{"session_id": origins[target], "target_agent": target, "kind": "concern", "text": "Check retry behavior before finishing.", "node_name": "main.go#Run"})
 				response, err := http.Post(server.URL+"/api/feedback", "application/json", bytes.NewReader(body))
 				if err != nil {
 					t.Fatal(err)
@@ -72,6 +88,7 @@ func TestDeveloperNotesDeliveredAtMCPCheckInAcrossTransports(t *testing.T) {
 			_ = json.Unmarshal([]byte(validJSON()), &arguments)
 			call := func(agent string) bridge.Receipt {
 				arguments["agent_id"] = agent
+				arguments["session_id"] = origins[agent]
 				result, err := session.CallTool(ctx, &sdk.CallToolParams{Name: "report_event", Arguments: arguments})
 				if err != nil || result.IsError {
 					t.Fatalf("call failed: %+v %v", result, err)
@@ -100,10 +117,10 @@ func TestDeveloperNotesDeliveredAtMCPCheckInAcrossTransports(t *testing.T) {
 			data, _ := json.Marshal(result.StructuredContent)
 			var state bridge.State
 			_ = json.Unmarshal(data, &state)
-			if len(state.Feedback) != 1 || len(state.Events) != 3 {
+			if len(state.Feedback) != 1 || len(state.Events) != 2 {
 				t.Fatalf("state includes feedback as activity or misses note: %+v", state)
 			}
-			if len(h.OfferFeedback("alpha")) != 0 {
+			if len(h.OfferFeedback("alpha", origins["alpha"])) != 0 {
 				t.Fatal("check-in did not mark note offered")
 			}
 		})
@@ -253,8 +270,17 @@ func TestOfficialMCPHandshakeToolsAndForwarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools.Tools) != 4 {
-		t.Fatalf("expected telemetry and state tools: %+v", tools)
+	if len(tools.Tools) != 5 {
+		t.Fatalf("expected telemetry, state, and workspace tools: %+v", tools)
+	}
+	toolNames := map[string]bool{}
+	for _, tool := range tools.Tools {
+		toolNames[tool.Name] = true
+	}
+	for _, name := range []string{"set_session", "set_workspace", "get_state", "report_event", "report_changes"} {
+		if !toolNames[name] {
+			t.Fatalf("missing MCP tool %s", name)
+		}
 	}
 	var arguments map[string]any
 	if err := json.NewDecoder(bytes.NewBufferString(validJSON())).Decode(&arguments); err != nil {
@@ -275,9 +301,9 @@ func TestOfficialMCPHandshakeToolsAndForwarding(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("MCP should return a tool error for invalid badge")
 	}
-	result, err = clientSession.CallTool(ctx, &sdk.CallToolParams{Name: "get_state", Arguments: map[string]any{}})
+	result, err = clientSession.CallTool(ctx, &sdk.CallToolParams{Name: "get_state", Arguments: map[string]any{"agent_id": "agent"}})
 	if err != nil || result.IsError {
-		t.Fatal("cannot read shared HUD state")
+		t.Fatal("cannot read this reporter workspace")
 	}
 }
 

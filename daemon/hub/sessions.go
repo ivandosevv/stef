@@ -3,16 +3,18 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/ivandosevv/stef/daemon/telemetry"
 )
 
 type sessionControl struct {
-	Control    string               `json:"stef_control"`
-	SessionID  string               `json:"session_id,omitempty"`
-	UpdateMode telemetry.UpdateMode `json:"update_mode,omitempty"`
+	Control       string               `json:"stef_control"`
+	SessionID     string               `json:"session_id,omitempty"`
+	UpdateMode    telemetry.UpdateMode `json:"update_mode,omitempty"`
+	WorkspaceID   string               `json:"workspace_id,omitempty"`
+	Action        string               `json:"action,omitempty"`
+	ObservationID string               `json:"observation_id,omitempty"`
+	CapturedEvent *telemetry.Event     `json:"captured_event,omitempty"`
 }
 
 func (h *Hub) store(e telemetry.Event) {
@@ -21,19 +23,17 @@ func (h *Hub) store(e telemetry.Event) {
 		events = append([]telemetry.Event(nil), events[len(events)-HistoryLimit:]...)
 	}
 	h.sessions[e.SessionID] = events
-	if e.SessionID == h.active {
+	if e.SessionID == h.resolveLocked(h.active) {
 		h.events = events
 	}
 }
-
 func (h *Hub) activate(id string) {
 	if _, exists := h.sessions[id]; !exists {
 		h.sessions[id] = []telemetry.Event{}
 	}
 	h.active = id
-	h.events = h.sessions[id]
+	h.events = h.sessions[h.resolveLocked(id)]
 }
-
 func (h *Hub) persist(data []byte) error {
 	if h.journal == nil {
 		return nil
@@ -42,7 +42,7 @@ func (h *Hub) persist(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err = h.journal.Write(append(data, '\n')); err == nil {
+	if _, err = h.journal.Write(append(data, 10)); err == nil {
 		err = h.journal.Sync()
 	}
 	if err != nil {
@@ -51,18 +51,29 @@ func (h *Hub) persist(data []byte) error {
 	}
 	return nil
 }
-
 func (h *Hub) broadcast(message Message) {
-	for client := range h.clients {
+	if message.Type != "workspaces" && message.SessionID == h.resolveLocked(h.active) {
+		for client := range h.clients {
+			select {
+			case client <- message:
+			default:
+				close(client)
+				delete(h.clients, client)
+			}
+		}
+	}
+	for client, origin := range h.scopedClients {
+		if message.Type != "workspaces" && message.SessionID != h.resolveLocked(origin) {
+			continue
+		}
 		select {
 		case client <- message:
 		default:
 			close(client)
-			delete(h.clients, client)
+			delete(h.scopedClients, client)
 		}
 	}
 }
-
 func (h *Hub) activateLocked(id string) error {
 	if id == h.active {
 		return nil
@@ -76,7 +87,8 @@ func (h *Hub) activateLocked(id string) error {
 	return nil
 }
 
-// ActivateSession restores a chat's workflow, or starts empty for a new chat ID.
+// ActivateSession retains legacy selection behavior. Workspace-aware clients
+// call RegisterSession once and use a pinned subscription thereafter.
 func (h *Hub) ActivateSession(id string) (Message, error) {
 	if err := telemetry.Session(id); err != nil {
 		return Message{}, err
@@ -88,14 +100,13 @@ func (h *Hub) ActivateSession(id string) (Message, error) {
 	}
 	return h.snapshot(), nil
 }
-
-// ClearSession starts a new segment for one chat and keeps other chats intact.
 func (h *Hub) ClearSession(id string) (Message, error) {
 	if err := telemetry.Session(id); err != nil {
 		return Message{}, err
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	id = h.resolveLocked(id)
 	if _, exists := h.sessions[id]; !exists {
 		return Message{}, fmt.Errorf("unknown session")
 	}
@@ -104,23 +115,20 @@ func (h *Hub) ClearSession(id string) (Message, error) {
 		return Message{}, err
 	}
 	h.sessions[id] = []telemetry.Event{}
-	for key := range h.claims {
-		if strings.HasPrefix(key, id+"\n") {
-			delete(h.claims, key)
-		}
+	h.clearClaimsLocked(id)
+	if setting, ok := h.workspaceSettings[id]; ok {
+		setting.CaptureFrom = h.next + 1
+		h.workspaceSettings[id] = setting
 	}
-	if id == h.active {
+	if id == h.resolveLocked(h.active) {
 		h.events = h.sessions[id]
-		h.broadcast(h.snapshot())
 	}
-	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Events: []telemetry.Event{}}, nil
+	snapshot := h.snapshotSessionLocked(id)
+	h.broadcast(snapshot)
+	return snapshot, nil
 }
-
 func (h *Hub) SessionSnapshot(id string) Message {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if id == "" {
-		id = h.active
-	}
-	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Events: append([]telemetry.Event{}, h.sessions[id]...)}
+	return h.snapshotSessionLocked(id)
 }

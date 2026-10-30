@@ -27,11 +27,22 @@ func TestCLIReportsExactChangesThroughMCP(t *testing.T) {
 	defer h.Close()
 	server := httptest.NewServer(handler(h, t.TempDir(), "4820"))
 	defer server.Close()
+	if _, err := h.RegisterSession("cli-chat"); err != nil {
+		t.Fatal(err)
+	}
 	observed, err := h.Publish(telemetry.Event{AgentID: "filesystem", NodeName: "theme.ts", Action: "modified", Summary: "File modified", Why: "A file save was observed.", Source: "watcher", Kind: "file"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	arguments := bridge.ChangesInput{AgentID: "cli-agent", Changes: []telemetry.ChangeExplanation{{ChangeID: observed.ID, Summary: "Share theme preference", Why: "Keep appearance consistent across startup and controls."}}}
+	if err := h.ClaimChanges("cli-chat", []string{"theme.ts"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, captured := range h.SessionSnapshot("cli-chat").Events {
+		if captured.Source == "watcher" {
+			observed = captured
+		}
+	}
+	arguments := bridge.ChangesInput{SessionID: "cli-chat", AgentID: "cli-agent", Changes: []telemetry.ChangeExplanation{{ChangeID: observed.ID, Summary: "Share theme preference", Why: "Keep appearance consistent across startup and controls."}}}
 	input, _ := json.Marshal(arguments)
 	var output bytes.Buffer
 	if err := reportChangesCLI(context.Background(), server.URL+"/", root, bytes.NewReader(input), &output); err != nil {
@@ -44,17 +55,17 @@ func TestCLIReportsExactChangesThroughMCP(t *testing.T) {
 	if !receipt.Accepted || len(receipt.IDs) != 1 || receipt.PendingCount != 0 {
 		t.Fatalf("missing exact MCP receipt: %+v", receipt)
 	}
-	events := h.Snapshot().Events
+	events := h.SessionSnapshot("cli-chat").Events
 	if last := events[len(events)-1]; last.ChangeID != observed.ID || last.AgentID != "cli-agent" || last.Why != arguments.Changes[0].Why {
 		t.Fatalf("wrong revision or reason: %+v", last)
 	}
 	arguments.Changes[0].ChangeID = "99999"
 	input, _ = json.Marshal(arguments)
 	output.Reset()
-	if err := reportChangesCLI(context.Background(), server.URL, root, bytes.NewReader(input), &output); err == nil || output.Len() != 0 || len(h.Snapshot().Events) != len(events) {
+	if err := reportChangesCLI(context.Background(), server.URL, root, bytes.NewReader(input), &output); err == nil || output.Len() != 0 || len(h.SessionSnapshot("cli-chat").Events) != len(events) {
 		t.Fatal("rejected exact revision changed history or returned a receipt")
 	}
-	if _, err := h.SetUpdateMode(telemetry.UpdatesDisabled); err != nil {
+	if _, err := h.SetUpdateMode(telemetry.UpdatesDisabled, "cli-chat"); err != nil {
 		t.Fatal(err)
 	}
 	if err := reportChangesCLI(context.Background(), server.URL, root, bytes.NewReader(input), &output); err != nil {

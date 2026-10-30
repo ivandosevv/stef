@@ -52,13 +52,14 @@ func TestChatSelectionAndFeedbackOverBothMCPTransports(t *testing.T) {
 				}
 			}
 			var receipt bridge.SessionReceipt
-			call("set_session", map[string]any{"session_id": "chat-a"}, &receipt)
-			if receipt.SessionID != "chat-a" {
+			call("set_session", map[string]any{"session_id": "chat-a", "agent_id": "same-agent"}, &receipt)
+			if receipt.SessionID == "" {
 				t.Fatal("chat identity missing from MCP receipt")
 			}
+			firstID := receipt.SessionID
 			var publication bridge.Receipt
-			call("report_event", map[string]any{"session_id": "chat-a", "agent_id": "same-agent", "node_name": "a.go", "action": "modified", "summary": "Fix blanks", "why": "Blank names need a default."}, &publication)
-			note, _ := json.Marshal(map[string]string{"session_id": "chat-a", "kind": "suggestion", "text": "Check Unicode too."})
+			call("report_event", map[string]any{"session_id": firstID, "agent_id": "same-agent", "node_name": "a.go", "action": "modified", "summary": "Fix blanks", "why": "Blank names need a default."}, &publication)
+			note, _ := json.Marshal(map[string]string{"session_id": firstID, "kind": "suggestion", "text": "Check Unicode too."})
 			response, err := http.Post(server.URL+"/api/feedback", "application/json", bytes.NewReader(note))
 			if err != nil {
 				t.Fatal(err)
@@ -67,18 +68,18 @@ func TestChatSelectionAndFeedbackOverBothMCPTransports(t *testing.T) {
 			if response.StatusCode != 201 {
 				t.Fatal("note rejected")
 			}
-			call("set_session", map[string]any{"session_id": "chat-b"}, &receipt)
+			call("set_session", map[string]any{"session_id": "chat-b", "agent_id": "same-agent"}, &receipt)
 			var state bridge.State
 			call("get_state", map[string]any{"agent_id": "same-agent"}, &state)
-			if state.SessionID != "chat-b" || len(state.Events) != 0 || len(state.Feedback) != 0 {
+			if state.SessionID != receipt.SessionID || state.SessionID == firstID || len(state.Events) != 0 || len(state.Feedback) != 0 {
 				t.Fatalf("new chat inherited data: %+v", state)
 			}
-			call("set_session", map[string]any{"session_id": "chat-a"}, &receipt)
+			call("set_session", map[string]any{"session_id": "chat-a", "agent_id": "same-agent"}, &receipt)
 			call("get_state", map[string]any{"agent_id": "same-agent"}, &state)
-			if state.SessionID != "chat-a" || len(state.Events) != 1 || len(state.Feedback) != 1 {
+			if state.SessionID != firstID || len(state.Events) != 1 || len(state.Feedback) != 1 {
 				t.Fatalf("resume lost data: %+v", state)
 			}
-			clearBody, _ := json.Marshal(map[string]string{"session_id": "chat-a"})
+			clearBody, _ := json.Marshal(map[string]string{"session_id": firstID})
 			response, err = http.Post(server.URL+"/api/sessions/clear", "application/json", bytes.NewReader(clearBody))
 			if err != nil {
 				t.Fatal(err)

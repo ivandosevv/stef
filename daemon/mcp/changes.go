@@ -56,5 +56,10 @@ func CheckInRequest(ctx context.Context, h *hub.Hub, input StateInput) (State, e
 		case <-timer.C:
 		}
 	}
+	if len(input.ChangedPaths) > 0 {
+		if err := h.ClaimChanges(input.SessionID, input.ChangedPaths); err != nil {
+			return State{}, err
+		}
+	}
 	return CheckIn(h, input.Limit, strings.TrimSpace(input.AgentID), input.SessionID), nil
 }

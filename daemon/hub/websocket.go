@@ -5,9 +5,15 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ivandosevv/stef/daemon/telemetry"
 )
 
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
+	session := r.URL.Query().Get("session_id")
+	if session != "" && telemetry.Session(session) != nil {
+		http.Error(w, "invalid session_id", http.StatusBadRequest)
+		return
+	}
 	// Origin and Host are checked by the enclosing HTTP middleware.
 	upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 4096, CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -15,7 +21,13 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	messages, unsubscribe := h.Subscribe()
+	var messages <-chan Message
+	var unsubscribe func()
+	if session != "" {
+		messages, unsubscribe = h.SubscribeSession(session)
+	} else {
+		messages, unsubscribe = h.Subscribe()
+	}
 	defer unsubscribe()
 	done := make(chan struct{})
 	go func() {

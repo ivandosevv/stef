@@ -33,6 +33,8 @@
 - [x] Cursor passive conversation/post-tool lifecycle adapter
 - [ ] Verify real Cursor, Copilot, Gemini, Roo, Devin, and JetBrains agent tasks
 - [x] Durable chat histories, start/resume selection, and per-chat Clear
+- [x] Private agent/subagent workspaces, explicit sharing, scoped views/settings, and preserved authors
+- [x] Exact revision attribution through trusted edited paths and atomic capture recovery
 - [ ] Verify idle chat switching signals inside each real agent host
 - [ ] Verify automatic tab opening through each agent host's browser-control tools
 

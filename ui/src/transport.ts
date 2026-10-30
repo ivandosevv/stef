@@ -10,7 +10,7 @@ function host(): HostAPI | undefined {
 }
 export function sendToHost(message: unknown): void { host()?.postMessage(message); }
 
-export function connectStream(onmessage: (message: StreamMessage) => void, onstatus: (connected: boolean, detail: string) => void): () => void {
+export function connectStream(onmessage: (message: StreamMessage) => void, onstatus: (connected: boolean, detail: string) => void, sessionID = ''): () => void {
   if (isEmbedded()) {
     const receive = (event: MessageEvent) => {
       const data = event.data;
@@ -18,7 +18,7 @@ export function connectStream(onmessage: (message: StreamMessage) => void, onsta
       else if (data?.type === 'stef.connection') onstatus(Boolean(data.connected), String(data.detail ?? ''));
     };
     window.addEventListener('message', receive);
-    sendToHost({ type: 'stef.ready' });
+    sendToHost({ type: 'stef.ready', session_id: sessionID });
     return () => window.removeEventListener('message', receive);
   }
   let socket: WebSocket | undefined;
@@ -26,13 +26,13 @@ export function connectStream(onmessage: (message: StreamMessage) => void, onsta
   let disposed = false;
   function connect() {
     if (disposed) return;
-    socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws' + (sessionID ? '?session_id=' + encodeURIComponent(sessionID) : ''));
     socket.onopen = () => onstatus(true, '');
     socket.onmessage = (message) => {
       try { onmessage(JSON.parse(message.data) as StreamMessage); }
       catch { onstatus(true, 'The engine sent an unreadable event.'); }
     };
-    socket.onclose = () => { onstatus(false, 'Connecting to the local engine…'); if (!disposed) retry = setTimeout(connect, 1500); };
+    socket.onclose = () => { if (disposed) return; onstatus(false, 'Connecting to the local engine…'); if (!disposed) retry = setTimeout(connect, 1500); };
     socket.onerror = () => socket?.close();
   }
   connect();

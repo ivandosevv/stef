@@ -22,17 +22,34 @@ Open the returned view_url using the host's built-in browser capability if
 available; otherwise give the localhost link for the existing browser tab.
 The engine being ready does not mean the host has opened the view.
 
-At each task's start, call get_state once and follow update_mode and the
-reporting_instructions in receipts. Reuse the chat's session_id; if lifecycle
-hooks have not supplied it, use set_session once and retain its returned ID.
+At the first task in a new or resumed chat, call set_session with the originally
+chosen stable chat ID as session_id and this worker's unique agent_id. Retain
+that pair for set_session on resume and use the returned worker session_id for
+every other tool. When a trusted hook supplies worker metadata,
+bind its exact session_id with set_session omitting agent_id, then use the hook's
+agent_id on reports. Otherwise create a unique ID and retain it. Then
+call get_state once at task start and follow update_mode and reporting_instructions.
+Each agent and subagent has a private workspace by default. Give subagents their
+own unique agent_id and set_session call; MCP cannot distinguish anonymous
+workers sharing a transport. Do not give them the parent's returned session_id.
+
+For explicit cooperation, set_workspace action=create returns a shared
+workspace_id. Give its code to the chosen workers and ask each to call action=join
+with that workspace_id. Keep using each worker's returned session_id for all
+reports. action=leave restores its private history without copying peer steps.
+Shared get_state includes bounded recorded explanations and authors at natural
+check-ins. Sharing never merges hidden reasoning or model chats, and does not
+start model calls. Updates and Clear apply to the selected workspace. Never poll.
 
 - milestones: report only major steps through report_event with a short label
   and a brief reason. Skip per-file explanations and edit check-ins.
 - files: prepare each file's short reason with the edit. Immediately after the
   edit, use exact pending revision IDs from the trusted hook, or get_state once
-  with settle_ms=300, then report_changes before another edit, test, or final
+  with settle_ms=300 and changed_paths listing only the actual relative edit
+  paths, then report_changes before another edit, test, or final
   reply. Batch every changed file, including helpers, tests, and cooperating
-  agents' edits. Use 2 to 4 word summaries and one short user-facing reason.
+  agents' edits when they explicitly share this workspace. Use 2 to 4 word
+  summaries and one short user-facing reason.
 - disabled: stop reporting and extra check-ins for this turn. Recheck the mode
   at the next task's start.
 
