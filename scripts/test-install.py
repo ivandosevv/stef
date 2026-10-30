@@ -35,6 +35,9 @@ def archive(entries, extension="tar.gz"):
             warnings.simplefilter("ignore", UserWarning)
             for name, data, kind in entries:
                 info = zipfile.ZipInfo(name)
+                # Keep deliberately invalid raw names on Windows, where
+                # ZipInfo's constructor otherwise replaces backslashes.
+                info.filename = name
                 info.external_attr = (0o120777 if kind == "link" else 0o100644) << 16
                 bundle.writestr(info, data)
     else:
@@ -173,9 +176,31 @@ class InstallerTest(unittest.TestCase):
                 with self.subTest(extension=extension, entries=entries):
                     output = self.base / ("archive-" + next(tempfile._get_candidate_names()))
                     output.mkdir()
+                    payload = archive(entries, extension)
+                    if extension == "zip":
+                        with zipfile.ZipFile(io.BytesIO(payload)) as bundle:
+                            self.assertEqual([entry.orig_filename for entry in bundle.infolist()],
+                                             [entry[0] for entry in entries])
                     with self.assertRaises(installer.InstallError):
-                        installer.extract_archive(archive(entries, extension), extension, output)
+                        installer.extract_archive(payload, extension, output)
         self.assertFalse((self.base / "escape").exists())
+
+    def test_zip_raw_names_are_validated_before_library_normalization(self):
+        for name in ["directory\\escape", "nul\x00suffix"]:
+            with self.subTest(name=name):
+                payload = archive([(name, b"bad", "file")], "zip")
+                output = self.base / ("raw-zip-" + next(tempfile._get_candidate_names()))
+                output.mkdir()
+                # Exercise Windows ZipInfo normalization on every host so a
+                # local Mac/Linux run catches reliance on entry.filename.
+                with patch.object(zipfile.os, "sep", "\\"):
+                    with zipfile.ZipFile(io.BytesIO(payload)) as bundle:
+                        entry = bundle.infolist()[0]
+                        self.assertEqual(entry.orig_filename, name)
+                        self.assertNotEqual(entry.filename, name)
+                    with self.assertRaisesRegex(installer.InstallError, "Unsafe path"):
+                        installer.extract_archive(payload, "zip", output)
+                self.assertEqual(list(output.iterdir()), [])
 
     def test_locked_updates_preserve_old_binary_and_identical_reinstall_is_local(self):
         source = self.base / "compiled"

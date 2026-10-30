@@ -195,7 +195,9 @@ def extract_archive(data, extension, directory):
                 mode = entry.external_attr >> 16
                 if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))):
                     raise InstallError("Release archives cannot contain links or special files.")
-                output = destination(entry.filename, entry.file_size)
+                # ZipInfo normalizes Windows separators and truncates NULs in
+                # filename; validate the original archive name before either.
+                output = destination(entry.orig_filename, entry.file_size)
                 if entry.is_dir():
                     output.mkdir(parents=True, exist_ok=True)
                 else:
