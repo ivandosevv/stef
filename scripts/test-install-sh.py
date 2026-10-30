@@ -64,6 +64,9 @@ case "$url" in
     cp "$FAKE_FIXTURES/$FAKE_ARCHIVE_NAME" "$out" ;;
   *) exit 22 ;;
 esac
+if [ "$FAKE_HEADER_BYTES" -gt 0 ]; then
+  awk -v bytes="$FAKE_HEADER_BYTES" 'BEGIN { printf "X-Fixture: "; for (i=0;i<bytes;i++) printf "a"; printf "\r\n\r\n" }' >> "$headers"
+fi
 printf '%s %s' "$status" "$url"
 '''
 
@@ -108,7 +111,7 @@ class InstallTests(unittest.TestCase):
                     "STEF_ARGS_LOG": str(self.root / "args"),
                     "FAKE_OS": "Darwin", "FAKE_ARCH": "arm64",
                     "FAKE_FAILURE": "", "FAKE_LATEST_KIND": "valid",
-                    "FAKE_ARCHIVE_REDIRECT": ""}
+                    "FAKE_ARCHIVE_REDIRECT": "", "FAKE_HEADER_BYTES": "0"}
         self.prepare_archive()
 
     def prepare_archive(self, *, os_name="darwin", arch="arm64", version="0.3.0",
@@ -225,6 +228,26 @@ class InstallTests(unittest.TestCase):
         self.checksum.write_bytes(b"x" * 4097)
         # Some shells enforce ulimit during download; others reach the byte check.
         self.assert_failed_preserves_binary()
+
+    def test_small_checksum_accepts_larger_response_headers(self):
+        self.assertLess(self.checksum.stat().st_size, 4096)
+        self.env["FAKE_HEADER_BYTES"] = "8192"
+        self.assert_success(self.run_install("--release", "0.3.0", "--build-only"))
+        self.assertEqual(self.installed().read_bytes(), FAKE_BINARY)
+
+    def test_oversized_response_headers_preserve_existing_binary(self):
+        self.env["FAKE_HEADER_BYTES"] = "65537"
+        self.assert_failed_preserves_binary("--release", "0.3.0")
+
+    def test_checksum_body_limit_remains_exact_with_header_budget(self):
+        self.env["FAKE_HEADER_BYTES"] = "8192"
+        self.checksum.write_bytes(b"x" * 4097)
+        result = self.assert_failed_preserves_binary("--release", "0.3.0")
+        self.assertIn("release download is too large", result.stderr)
+        # Unadvertised writes beyond the process cap also reject the install safely.
+        self.env["FAKE_HEADER_BYTES"] = "0"
+        self.checksum.write_bytes(b"x" * 65537)
+        self.assert_failed_preserves_binary("--release", "0.3.0")
 
     def test_standard_hash_tools_are_supported_independently(self):
         for name in ("sha256sum", "shasum"):

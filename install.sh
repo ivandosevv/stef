@@ -95,6 +95,10 @@ download() {
   _stef_url=$1
   _stef_destination=$2
   _stef_limit=$3
+  _stef_header_limit=65536
+  # curl writes headers and payload separately; a tiny checksum can have big headers.
+  _stef_write_limit=$_stef_limit
+  if [ "$_stef_write_limit" -lt "$_stef_header_limit" ]; then _stef_write_limit=$_stef_header_limit; fi
   _stef_deadline=$(( $(date +%s) + 60 ))
   _stef_redirects=0
   while :; do
@@ -102,7 +106,7 @@ download() {
     _stef_remaining=$(( _stef_deadline - $(date +%s) ))
     [ "$_stef_remaining" -gt 0 ] || fail 'GitHub download timed out; retry the install.'
     _stef_result=$(
-      ulimit -f $(( (_stef_limit + 511) / 512 )) 2>/dev/null || exit 1
+      ulimit -f $(( (_stef_write_limit + 511) / 512 )) 2>/dev/null || exit 1
       curl --fail --silent --show-error --proto '=https' --connect-timeout 10 \
         --max-time "$_stef_remaining" --max-filesize "$_stef_limit" \
         --dump-header "$_stef_stage/headers" --output "$_stef_destination" \
@@ -111,6 +115,7 @@ download() {
     _stef_status=${_stef_result%% *}
     _stef_effective_url=${_stef_result#* }
     validate_url "$_stef_effective_url"
+    [ "$(wc -c < "$_stef_stage/headers")" -le "$_stef_header_limit" ] || fail 'The release response headers are too large.'
     [ "$(wc -c < "$_stef_destination")" -le "$_stef_limit" ] || fail 'The release download is too large.'
     case "$_stef_status" in
       200) return ;;
