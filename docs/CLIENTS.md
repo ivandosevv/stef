@@ -134,6 +134,26 @@ this local loopback companion. No permission or model-evaluated hooks are added.
 
 ## Codex
 
+Codex and Claude post-edit hooks now return documented PostToolUse
+hookSpecificOutput.additionalContext with current pending IDs for concrete
+edit paths, only in Every file mode. The read-only reminder endpoint waits up to
+300 ms for ordinary watcher debounce and never consumes developer notes. Reads,
+tests, shell commands, stef MCP calls, and other clients emit no reminder.
+The agent supplies the actual reason through report_changes; hooks do not infer
+intent. Generated PostToolUse handlers deliver context before the agent resumes
+with a bounded local wait and fail-open errors. Rerun setup migrates only stef's
+older async handler. Async Codex context reaches the next safe model request;
+async Claude context may wait for the next user turn. Fixture/HTTP validation does not prove
+that a real host loaded/trusted the hooks or delivered their context.
+
+An agent without loaded stef tools may use --report-changes --repo <root>
+--daemon <endpoint> with the same JSON on stdin. This calls the official SDK's
+Streamable HTTP MCP client after validating the existing engine's root/version.
+It makes no edits and does not start another agent or companion.
+
+Hook references: [Codex](https://developers.openai.com/codex/hooks/) and
+[Claude Code](https://code.claude.com/docs/en/hooks).
+
 This checkout is configured through its local .codex/config.toml and hooks.json.
 Start a new Codex session with this personal folder as its root. stef uses 4825
 for this root; the standalone example sandbox can remain on 4820.
@@ -176,10 +196,11 @@ new session in the configured personal root. Other roots need their own setup.
 
 Reference: https://code.claude.com/docs/en/hooks
 
-examples/claude-hooks.json uses asynchronous command hooks for SessionStart,
-PreToolUse, PostToolUse, PostToolUseFailure, and Stop. Replace the executable
+examples/claude-hooks.json keeps lifecycle commands asynchronous, with a bounded
+synchronous PostToolUse handler for prompt edit reminders. Replace the executable
 path and endpoint for your chosen project. The --hook process reads stdin,
-produces no stdout, and fails open if tracking is unavailable. It strips prompts,
+returns standard additionalContext only for eligible pending edits, and fails
+open if tracking is unavailable. It strips prompts,
 raw commands, and output. A different client's hook payload must be adapted
 explicitly; use examples/generic-activity.json for the neutral contract.
 

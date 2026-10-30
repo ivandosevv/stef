@@ -103,7 +103,7 @@ test('every saved file appears automatically and each revision gets its own expl
   const themeSteps = page.locator('[data-testid="workflow-step"][title^="theme.ts"]');
   await expect(themeSteps).toHaveCount(1);
   await themeSteps.first().click();
-  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Waiting for the agent’s explanation.');
+  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
   await writeFile(resolve(root, 'main.ts'), 'import { background } from "./theme";\nconsole.log(background);\n');
   await expect(page.locator('[data-testid="workflow-step"][title^="main.ts"]')).toHaveCount(1);
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
@@ -124,11 +124,11 @@ test('every saved file appears automatically and each revision gets its own expl
   await expect(page.getByTestId('workflow-step')).toHaveCount(3);
   await expect(page.getByTestId('workflow-arrow')).toHaveCount(2);
   await themeSteps.last().click();
-  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Waiting for the agent’s explanation.');
+  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
   await expect(page.getByRole('region', { name: 'Why this step' })).not.toContainText(explanation);
   await page.reload();
   await expect(page.getByTestId('workflow-step')).toHaveCount(3);
-  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Waiting for the agent’s explanation.');
+  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
   await themeSteps.first().click();
   await expect(page.getByRole('region', { name: 'Why this step' })).toContainText(explanation);
   await page.screenshot({ path: '../artifacts/stef-automatic-file-changes.png', fullPage: true });
@@ -339,7 +339,7 @@ test('mode changes start a future reporting window while saved history remains a
   expect(revisions[1].after).toContain('"resumed"');
   expect(events.some(event => event.node_name === 'updates-milestones-only.ts' || event.node_name === 'updates-hook.ts')).toBe(false);
   await fileSteps.last().click();
-  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Waiting for the agent’s explanation.');
+  await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
   await expect(page.getByRole('region', { name: 'Why this step' })).not.toContainText(explanation);
   await page.getByRole('button', { name: 'Hide saved history', exact: true }).click();
   await expect(fileSteps).toHaveCount(1);
@@ -610,6 +610,7 @@ test('Interactive shows exact local revisions and requests more agent context on
   const revision = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.node_name === 'interactive-source.ts').at(-1)!;
   const reason = 'Keep this exact revision visible so a developer can compare the previous value with the new escaped source without reading unrelated changes or asking another model to reconstruct what happened.';
   await request.post('/api/events', { data: { ...report(session, revision.node_name, 'Keep exact source visible', reason), action: revision.action, change_id: revision.id } });
+  await request.post('/api/events', { data: { ...report(session, 'unrelated-agent.ts', 'Separate agent work', 'This later reporter does not own the selected revision.'), agent_id: 'unrelated-agent' } });
   await fileSteps.last().click();
   await pickDesign(page, 'interactive');
   const panel = page.getByRole('region', { name: 'Selected change', exact: true });
@@ -643,6 +644,9 @@ test('Interactive shows exact local revisions and requests more agent context on
   expect((await queued).ok()).toBe(true);
   await expect(panel).toContainText(/next check-in/);
   expect(feedbackRequests).toHaveLength(1);
+  expect((feedbackRequests[0] as { target_agent: string }).target_agent).toBe('test-agent');
+  const unrelatedState = await (await request.post('/api/check-in', { data: { session_id: session, agent_id: 'unrelated-agent' } })).json();
+  expect(unrelatedState.feedback ?? []).toEqual([]);
   const state = await checkIn(request, session);
   expect(state.feedback).toHaveLength(1);
   expect(state.feedback[0].node_name).toBe(revision.node_name);
@@ -671,6 +675,183 @@ test('Interactive shows exact local revisions and requests more agent context on
     await page.screenshot({ path: '../artifacts/stef-interactive-' + theme + '.png', fullPage: true });
   }
   expect(errors).toEqual([]);
+});
+
+
+for (const recovery of [{ design: 'minimal', reply: 'changes' }, { design: 'interactive', reply: 'context' }] as const) {
+  test(recovery.design + ' requests a missing explanation once and resolves an exact ' + recovery.reply + ' reply', async ({ page, request }) => {
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    const feedbackRequests: { session_id: string; text: string; node_name: string; target_agent: string }[] = [];
+    page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
+    await page.goto('/?companion=1');
+    const session = 'missing-reason-' + recovery.design;
+    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    const root = await isolatedRoot(request);
+    const name = 'missing-reason-' + recovery.design + '.ts';
+    const file = resolve(root, name);
+    const fileSteps = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
+    const before = 'export const version = "before";';
+    const after = 'export const version = "after";';
+    await writeFile(file, before + '\n');
+    await expect(fileSteps).toHaveCount(1);
+    const first = (await savedEvents(request, session)).find(event => event.source === 'watcher' && event.node_name === name)!;
+    await request.post('/api/events', { data: { ...report(session, name, 'Start the fixture', 'Keep a known previous value for comparison.'), action: first.action, change_id: first.id } });
+    await writeFile(file, after + '\n');
+    await expect(fileSteps).toHaveCount(2);
+    const revision = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.node_name === name).at(-1)!;
+    await request.post('/api/events', { data: { ...report(session, 'unrelated-' + recovery.design + '.ts', 'Separate agent work', 'This later reporter does not own the pending saved file.'), agent_id: 'unrelated-agent' } });
+    await fileSteps.last().click();
+    await pickDesign(page, recovery.design);
+    const panel = () => page.getByRole('region', { name: recovery.design === 'minimal' ? 'Why this step' : 'Selected change', exact: true });
+    await expect(panel()).toContainText('The agent hasn’t explained this save yet.');
+    await expect(panel().getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
+    await fileSteps.first().click();
+    await fileSteps.last().click();
+    await pickDesign(page, recovery.design === 'minimal' ? 'interactive' : 'minimal');
+    await pickDesign(page, recovery.design);
+    await panel().getByRole('button', { name: 'Show diff', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'File diff', exact: true });
+    await expect(dialog.locator('[data-kind="removal"] .diff-code')).toHaveText([before]);
+    await expect(dialog.locator('[data-kind="addition"] .diff-code')).toHaveText([after]);
+    await dialog.getByRole('button', { name: 'Close diff', exact: true }).click();
+    expect(feedbackRequests).toEqual([]);
+
+    const response = page.waitForResponse(outgoing => new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.request().method() === 'POST');
+    await panel().getByRole('button', { name: 'Request explanation', exact: true }).click();
+    expect((await response).ok()).toBe(true);
+    await expect(panel().getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+    await expect(panel()).toContainText('next check-in');
+    expect(feedbackRequests).toHaveLength(1);
+    expect(feedbackRequests[0].session_id).toBe(session);
+    expect(feedbackRequests[0].node_name).toBe(name);
+    expect(feedbackRequests[0].target_agent).toBe('*');
+    expect(feedbackRequests[0].text).toContain('Only answer if this change is attributable to your task');
+    expect(feedbackRequests[0].text).toContain('context_id="' + revision.id + '"');
+    expect(feedbackRequests[0].text).toContain('action="' + revision.action + '"');
+    expect(feedbackRequests[0].text).toContain('a brief user-facing why');
+    const state = await checkIn(request, session);
+    expect(state.feedback).toHaveLength(1);
+    await fileSteps.first().click();
+    await fileSteps.nth(1).click();
+    await expect(panel().getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+    await pickDesign(page, recovery.design === 'minimal' ? 'interactive' : 'minimal');
+    await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+    await pickDesign(page, recovery.design);
+    expect(feedbackRequests).toHaveLength(1);
+
+    await writeFile(file, 'export const version = "later";\n');
+    await expect(fileSteps).toHaveCount(3);
+    const later = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.node_name === name).at(-1)!;
+    const unrelated = await request.post('/api/events', { data: { ...report(session, name, 'Explain the previous save', 'This reply belongs to the previous revision.'), action: first.action, context_id: first.id } });
+    expect(unrelated.ok()).toBe(true);
+    await expect(panel().getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+    const why = 'Update the displayed value while preserving the exact previous value in the saved diff.';
+    const reply = recovery.reply === 'changes'
+      ? await request.post('/api/changes', { data: { session_id: session, agent_id: 'test-agent', changes: [{ change_id: revision.id, summary: 'Update the displayed value', why }] } })
+      : await request.post('/api/events', { data: { ...report(session, name, 'Update the displayed value', why), action: revision.action, context_id: revision.id } });
+    expect(reply.ok()).toBe(true);
+    await expect(fileSteps.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel()).toContainText(why);
+    await expect(panel()).toContainText('The agent added an explanation.');
+    await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toHaveCount(0);
+    if (recovery.design === 'minimal') await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toHaveCount(0);
+    else await expect(panel().getByRole('button', { name: 'Explain more', exact: true })).toBeEnabled();
+    await panel().getByRole('button', { name: 'Show diff', exact: true }).click();
+    await expect(dialog.locator('[data-kind="removal"] .diff-code')).toHaveText([before]);
+    await expect(dialog.locator('[data-kind="addition"] .diff-code')).toHaveText([after]);
+    await expect(dialog).not.toContainText('"later"');
+    await dialog.getByRole('button', { name: 'Close diff', exact: true }).click();
+    await fileSteps.last().click();
+    await expect(panel()).toContainText('The agent hasn’t explained this save yet.');
+    await expect(panel().getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
+    expect((await checkIn(request, session)).pending_changes.map((change: { change_id: string }) => change.change_id)).toEqual([later.id]);
+    expect(feedbackRequests).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('missing-explanation requests reset on reporting windows, chat changes and shared Clear while ordinary reconnects preserve them', async ({ page, request, context }) => {
+  const feedbackRequests: unknown[] = [];
+  page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
+  await page.addInitScript(() => {
+    const Original = window.WebSocket;
+    const sockets: WebSocket[] = [];
+    window.WebSocket = class extends Original {
+      constructor(url: string | URL, protocols?: string | string[]) { super(url, protocols); sockets.push(this); }
+    };
+    (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets = sockets;
+  });
+  await page.goto('/?companion=1');
+  const session = 'missing-reason-boundaries';
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  const root = await isolatedRoot(request);
+  const name = 'missing-reason-boundaries.ts';
+  const file = resolve(root, name);
+  const fileSteps = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
+  await writeFile(file, 'export const pending = true;\n');
+  await expect(fileSteps).toHaveCount(1);
+  const old = (await savedEvents(request, session)).find(event => event.source === 'watcher' && event.node_name === name)!;
+  await fileSteps.click();
+  await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+  expect(feedbackRequests).toHaveLength(1);
+  await page.evaluate(() => (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets!.at(-1)!.close());
+  await expect.poll(() => page.evaluate(() => (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets!.length)).toBe(2);
+  await expect(page.getByRole('button', { name: 'Updates', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+  expect(feedbackRequests).toHaveLength(1);
+  await pickUpdates(page, 'disabled');
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toHaveCount(0);
+  expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
+  await pickUpdates(page, 'milestones');
+  await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
+  await expect(fileSteps).toHaveCount(1);
+  if ((await fileSteps.getAttribute('aria-pressed')) !== 'true') await fileSteps.click();
+  await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
+  await pickDesign(page, 'interactive');
+  await page.getByRole('button', { name: 'Show diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await pickDesign(page, 'minimal');
+  await page.getByRole('button', { name: 'Hide saved history', exact: true }).click();
+  await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
+  expect(feedbackRequests).toHaveLength(1);
+  expect((await checkIn(request, session)).pending_changes).toEqual([]);
+  await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+  expect(feedbackRequests).toHaveLength(2);
+  const requested = await checkIn(request, session);
+  expect(requested.feedback).toHaveLength(1);
+  const explained = await request.post('/api/events', { data: { ...report(session, name, 'Explain requested history', 'Keep this saved revision available for an explicitly requested explanation.'), action: old.action, context_id: old.id } });
+  expect(explained.ok()).toBe(true);
+  await expect(page.getByRole('region', { name: 'Why this step', exact: true })).toContainText('The agent added an explanation.');
+  expect((await checkIn(request, session)).pending_changes).toEqual([]);
+
+  await pickUpdates(page, 'files');
+  await writeFile(file, 'export const pending = false;\n');
+  await expect(fileSteps).toHaveCount(1);
+  await fileSteps.click();
+  await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+  await request.post('/api/sessions/activate', { data: { session_id: 'missing-reason-other-chat' } });
+  await expect(page.getByTestId('workflow-step')).toHaveCount(0);
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await expect(fileSteps).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toBeDisabled();
+  const otherView = await context.newPage();
+  await otherView.goto('/?companion=1');
+  await expect(otherView.getByTestId('workflow-step')).toHaveCount(1);
+  await otherView.getByRole('button', { name: 'Clear this chat’s workflow', exact: true }).click();
+  await expect(page.getByTestId('workflow-step')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Request queued', exact: true })).toHaveCount(0);
+  await otherView.close();
+  await writeFile(file, 'export const pending = "after clear";\n');
+  await expect(fileSteps).toHaveCount(1);
+  await fileSteps.click();
+  await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toBeEnabled();
+  await expect(page.getByRole('status')).toHaveCount(0);
+  expect(feedbackRequests).toHaveLength(4);
 });
 
 test('old unexplained files never re-enter pending reporting after milestones or Disabled', async ({ page, request }) => {
@@ -707,7 +888,7 @@ test('old unexplained files never re-enter pending reporting after milestones or
     await page.getByRole('button', { name: 'Show saved history', exact: true }).click();
     await expect(fileSteps).toHaveCount(1);
     await fileSteps.click();
-    await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('Waiting for the agent’s explanation.');
+    await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
     expect((await checkIn(request, session)).pending_changes).toEqual([]);
     const batch = await request.post('/api/changes', { data: { session_id: session, agent_id: 'test-agent', changes: [{ change_id: old.id, summary: 'Do not explain old backlog', why: 'Automatic reporting applies only to the current window.' }] } });
     expect(batch.status()).toBe(400);
@@ -759,7 +940,7 @@ test('file diffs keep exact additions, removals and AI explanations for each sav
   await expect(removed).toHaveCount(0);
   await expect(dialog.locator('[data-testid="diff-line"][data-kind="addition"] .line-number:nth-child(1)')).toHaveText(['', '', '']);
   await expect(dialog.locator('[data-testid="diff-line"][data-kind="addition"] .line-number:nth-child(2)')).toHaveText(['1', '2', '3']);
-  await expect(dialog.getByRole('region', { name: 'Why this change' })).toContainText('Waiting for the agent’s explanation.');
+  await expect(dialog.getByRole('region', { name: 'Why this change' })).toContainText('The agent hasn’t explained this save yet.');
 
   await writeFile(file, after.join('\n') + '\n');
   await expect(fileSteps).toHaveCount(2);

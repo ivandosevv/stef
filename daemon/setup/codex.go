@@ -139,11 +139,17 @@ func configureHookEvents(raw []byte, command string, events []string, syncStop b
 			for _, handler := range handlers {
 				if value, ok := handler.(map[string]any); ok && value["type"] == "command" && value["command"] == command {
 					found = true
+					// Deliver post-edit context before the agent resumes. Only our
+					// handler changes; other hooks and custom timeouts are preserved.
+					if event == "PostToolUse" && value["async"] == true {
+						value["async"] = false
+						changed = true
+					}
 				}
 			}
 		}
 		if !found {
-			groups[event] = append(entries, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command, "async": !(syncStop && event == "Stop"), "timeout": 3}}})
+			groups[event] = append(entries, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command, "async": event != "PostToolUse" && !(syncStop && event == "Stop"), "timeout": 3}}})
 			changed = true
 		}
 	}

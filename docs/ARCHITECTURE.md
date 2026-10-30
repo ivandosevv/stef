@@ -109,6 +109,9 @@ without requesting agent output. Explain more alone submits a targeted feedback
 question. A report_event context_id reply validates the retained chat/node/action
 and attaches full context to the original step. It creates no new file revision,
 changes no diff or claims, and does not generate context for other steps.
+An unexplained revision offers Request explanation in either design, using the
+same exact feedback reference. A matching normal change_id explanation or
+context_id reply resolves its queued state; unrelated or later saves do not.
 
 In files mode, MCP initialization requests a report_changes batch after each edit tool, covering
 every affected file. get_state exposes bounded unexplained IDs/paths separately
@@ -116,6 +119,23 @@ from recent activity, with an optional bounded debounce delay. The hub validates
 exact file/action/chat references and persists explanation batches atomically.
 Late reasons fill the original step; another save stays a new unexplained step.
 Legacy adjacent read/test reports still coalesce. Missing reasons stay visible.
+Reasons should be authored with the edit, then reported before the next edit or
+test. An orchestration call can sequence edit, bounded check-in, and exact report
+without another model turn. Codex/Claude PostToolUse hooks can instead deliver
+current pending IDs for their concrete edit paths through documented nonblocking
+additionalContext. These metadata-only reminders make no model calls, do not
+consume feedback, and skip milestones/disabled and earlier reporting windows.
+Generated PostToolUse handlers are synchronous with a bounded local wait so
+context reaches the agent before it resumes. Other lifecycle timing is preserved,
+and errors fail open. Setup migrates only stef's own older async handler; actual
+host trust/loading remains separate from adapter verification.
+Reminder caps disclose omitted revision/path counts. The agent reports included
+IDs first, then queries the path-filtered reminder endpoint for remaining files
+from its actual edit, in batches of at most 50 paths. This prevents unrelated
+pending revisions starving recovery; queries repeat only after an accepted batch
+makes progress or for the next path batch. A host preview is not a complete list.
+The --report-changes stdin fallback uses the official SDK Streamable HTTP
+client to report to an existing root/version-matched daemon.
 
 Solid arrows connect the previously visited parents reported by the agent.
 Dashed arrows connect consecutive steps in the chat. These sequences do not
@@ -136,6 +156,7 @@ rationale show no invented reason. No hidden chain-of-thought is requested.
 - POST /api/sessions/clear clears only the specified chat.
 - POST /api/feedback queues a chat-scoped suggestion.
 - POST /api/check-in returns compact activity, pending changes, and unseen notes.
+- POST /api/explanation-reminder returns only current matching-path pending metadata, without offering notes.
 - /mcp exposes set_session, report_event, report_changes, and get_state through the SDK.
 
 Host/Origin checks confine network access to the local view. MCP stdout contains

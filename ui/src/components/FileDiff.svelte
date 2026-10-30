@@ -16,7 +16,7 @@
 
 <dialog bind:this={dialog} aria-label="File diff" oncancel={event => { event.preventDefault(); onclose(); }} onkeydown={event => { if (event.key === 'Escape') event.stopPropagation(); }}>
   <div class="diff-header"><h2 title={step.node_name}>{step.node_name}</h2><button aria-label="Close diff" onclick={onclose}>×</button></div>
-  <section class="diff-reason" aria-label="Why this change"><p>{step.why || 'Waiting for the agent’s explanation.'}</p></section>
+  <section class="diff-reason" aria-label="Why this change"><p>{step.why || 'The agent hasn’t explained this save yet.'}</p></section>
   {#if truncated}<p class="diff-notice">Diff preview truncated. Only the captured portion is available.</p>{/if}
   {#if lines.length}
     <!-- Keyboard users need to focus this region to scroll long source lines. -->

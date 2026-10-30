@@ -17,9 +17,12 @@ explains each saved file revision, and disabled stops new recording/reporting.
 Updates changes begin a new recording window (updates_from); automatic
 explanations apply only to new saves, never to older retained pending files.
 Read the mode once at task start and honor mode changes in receipts. In files
-mode, after each edit tool while stef is connected, get_state
-once with settle_ms=300 and report_changes for every file changed by this task,
-using exact observation IDs and brief user-facing reasons. Include helpers, entry
+mode, prepare brief user-facing reasons alongside the edits, then after each edit
+tool use exact pending IDs supplied by a trusted hook or get_state once with
+settle_ms=300, and report_changes before another edit, test, or final reply.
+Sequence edit, bounded check-in, and exact report in the same orchestration call
+when available; do not return for another deliberation turn between them.
+Include helpers, entry
 points, tests, docs, configuration, and cooperating agents' edits. Check pending
 changes once before finishing; leave unknown authors' intent unexplained.
 Never claim that MCP exposes every client's private workflow.
@@ -35,7 +38,8 @@ picker (Major milestones, Every file, Disabled).
 The Design picker offers Minimal or Interactive. Interactive renders the selected
 revision's before/after hunks or a milestone's action/state/reported paths locally.
 Design changes and history viewing make no model calls. Fuller context is requested
-only through an explicit Explain more click; answer the resulting feedback with
+only through an explicit Explain more click. Request explanation asks for a
+missing reason; neither action starts a background model call. Answer feedback with
 report_event context_id for that retained step. Keep old history inspectable
 without automatically generating or re-requesting its explanations.
 Selected saved-file steps may open the requested Git-style diff with the exact

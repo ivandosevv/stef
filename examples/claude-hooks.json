@@ -28,7 +28,8 @@
           {
             "type": "command",
             "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
-            "async": true
+            "async": false,
+            "timeout": 3
           }
         ]
       }

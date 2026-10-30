@@ -62,7 +62,7 @@
   {/if}
 
   <div class="visual-reason" aria-label="Why this change">
-    <span class="section-label">Why</span><p>{reason || (step.explanation_pending ? 'Waiting for the agent’s explanation.' : 'No explanation was supplied for this step.')}</p>
+    <span class="section-label">Why</span><p>{reason || (step.explanation_pending ? 'The agent hasn’t explained this save yet.' : 'No explanation was supplied for this step.')}</p>
   </div>
 
   {#if file}
@@ -97,8 +97,8 @@
   {/if}
 
   <footer class="explain-request">
-    <button class="text-button" onclick={onexplain} disabled={!connected || asking}>{asking ? 'Request queued' : 'Explain more'}</button>
-    <p class="request-help">Extra AI context may use tokens. The agent receives your request at its next check-in.</p>
+    <button class="text-button" onclick={onexplain} disabled={!connected || asking}>{asking ? 'Request queued' : step.explanation_pending ? 'Request explanation' : 'Explain more'}</button>
+    <p class="request-help">{step.explanation_pending ? 'The agent receives your request at its next check-in.' : 'Extra AI context may use tokens. The agent receives your request at its next check-in.'}</p>
     {#if requestStatus}<p class="request-status" role="status">{requestStatus}</p>{/if}
   </footer>
 </section>

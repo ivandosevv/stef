@@ -57,10 +57,17 @@ Use Design to choose Minimal or Interactive. Interactive shows exact before/afte
 code hunks and reported milestone paths beside the selected step. This visual
 choice makes no AI call. Click Explain more only when you want extra agent context;
 the token warning applies to that explicit question, delivered at the next check-in.
+An unexplained file offers Request explanation in both designs. It asks about
+that exact save, and a normal file explanation also resolves its queued state.
 
 In Every file mode, each changed file needs a short agent-supplied reason. The MCP instructions/skill
-ask the agent to get_state with settle_ms=300 after each edit, then report_changes
-for all affected observation IDs in one batch. Pending files make omissions
+ask the agent to prepare reasons with the edit, then report_changes for every
+affected exact observation before another edit, test, or final reply. Trusted
+Codex/Claude post-edit hooks can supply the pending IDs before the agent resumes;
+otherwise use get_state once with settle_ms=300. Setup migrates older async stef
+handlers while preserving other hooks; changed definitions may require review.
+If tools are unavailable, --report-changes accepts the same JSON on stdin for
+the existing root-matched engine. Pending files make omissions
 visible. Read/test milestones and queued notes still use MCP check-ins.
 
 Try a task in examples/sandbox from that VS Code agent. stef shows connected

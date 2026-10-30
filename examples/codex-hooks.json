@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "async": true,
+            "async": false,
             "command": "'/absolute/path/to/stef/bin/stef' --hook --client codex --daemon 'http://127.0.0.1:4820'",
             "timeout": 3,
             "type": "command"

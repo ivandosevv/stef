@@ -24,6 +24,9 @@ and reported milestone actions, states, and paths. Switching design, clicking
 steps, or inspecting history makes no model call. Explain more alone queues an
 explicit request for fuller AI context, with a token warning, answered at the
 agent's next check-in. The answer updates the same step and preserves its diff.
+An unexplained save offers Request explanation in either design. It queues one
+question for that exact revision; clicking or viewing a step never requests AI
+output by itself. A normal per-file reply also resolves the queued request.
 
 The appearance button beside Clear offers Dark, Light, Eye comfort, and System.
 Eye comfort uses a warm background and muted green accents. Your choice is
@@ -107,9 +110,12 @@ without creating duplicate file steps.
 
 Passive hooks and file watching make no model calls. MCP initialization and the
 bundled skill tell connected agents to follow the selected Updates mode. In Every
-file mode, check pending changes after each edit and
-explain every file using one report_changes batch. get_state with settle_ms=300
-allows the watcher debounce; pending IDs/paths are returned without code/diffs.
+file mode, prepare the reasons with the edit and report every exact saved
+revision before another edit, test, or final reply. Trusted Codex/Claude
+PostToolUse hooks can supply bounded pending IDs directly to the same agent.
+Otherwise get_state once with settle_ms=300 allows the watcher debounce;
+pending IDs/paths are returned without code/diffs. Tool orchestration can couple
+the edit, check-in, and report in one call, removing a separate model turn.
 Before finishing, agents check for omitted explanations once. report_event still
 handles reads, tests, or plans. No second model is used; token cost is unmeasured.
 An agent must follow the reporting contract: filesystem monitoring cannot
@@ -118,6 +124,20 @@ Major milestones requests only new key steps with reasons and suppresses new fil
 capture. Disabled rejects new activity and returns no pending files or feedback
 to the model. Changes reach a working agent in its next natural MCP check-in;
 stef does not poll the model or interrupt its current generation.
+
+When a host has not loaded stef tools, the executable can send the same
+report_changes JSON through the existing daemon's MCP endpoint:
+
+~~~sh
+stef --report-changes --repo /absolute/path/to/project --daemon http://127.0.0.1:4825 < reasons.json
+~~~
+
+This requires current exact change IDs and an already-running root-matched
+engine. Generated post-edit hooks deliver context before the agent resumes,
+with a bounded local wait and fail-open errors. Older async hooks deliver later
+(Claude may wait for the next user turn); rerun setup to update stef's handler.
+Automatic hook loading
+in the Codex VS Code panel remains unverified.
 
 ## Checks
 

@@ -47,6 +47,7 @@ func run() error {
 	noAutostart := flag.Bool("no-autostart", false, "Require an already-running root-matched engine in MCP mode")
 	quitAfter := flag.Duration("quit-after", 0, "Optional shutdown duration for demos and smoke tests")
 	hook := flag.Bool("hook", false, "Forward a lifecycle hook from stdin; failures do not block the agent")
+	reportChanges := flag.Bool("report-changes", false, "Send report_changes JSON from stdin to an existing root-matched companion via MCP")
 	client := flag.String("client", "generic", "MCP setup client (see --list-clients); hook format: generic, claude, codex, cursor")
 	endpoint := flag.String("daemon", "http://127.0.0.1:4820", "Daemon origin for MCP bridge mode")
 	flag.Parse()
@@ -67,7 +68,7 @@ func run() error {
 		defer stop()
 	}
 	if *hook {
-		if err := hooks.Send(ctx, *endpoint, *client, os.Stdin); err != nil {
+		if err := hooks.Run(ctx, *endpoint, *client, os.Stdin, os.Stdout); err != nil {
 			log.Printf("stef hook skipped: %v", err)
 		}
 		return nil
@@ -91,6 +92,9 @@ func run() error {
 	info, err := os.Stat(root)
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("--repo must be an existing directory")
+	}
+	if *reportChanges {
+		return reportChangesCLI(ctx, *endpoint, root, os.Stdin, os.Stdout)
 	}
 	presentation, err := projectPresentation(root, *view)
 	if err != nil {

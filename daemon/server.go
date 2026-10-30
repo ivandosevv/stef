@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ivandosevv/stef/daemon/hub"
 	"github.com/ivandosevv/stef/daemon/mcp"
@@ -108,6 +109,36 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 			return
 		}
 		writeJSON(w, 201, receipt)
+	})
+	mux.HandleFunc("POST /api/explanation-reminder", func(w http.ResponseWriter, r *http.Request) {
+		var input telemetry.ReminderRequest
+		if !decodeJSON(w, r, &input, 32*1024) {
+			return
+		}
+		if err := input.Validate(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if input.SettleMS > 0 {
+			timer := time.NewTimer(time.Duration(input.SettleMS) * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-r.Context().Done():
+				http.Error(w, r.Context().Err().Error(), http.StatusBadRequest)
+				return
+			case <-timer.C:
+			}
+		}
+		if err := r.Context().Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		state, err := h.ExplanationReminder(input.SessionID, input.Paths)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
 	})
 	mux.HandleFunc("POST /api/activity", func(w http.ResponseWriter, r *http.Request) {
 		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))

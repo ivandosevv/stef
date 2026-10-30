@@ -27,41 +27,59 @@
   let design = $state<Design>(readDesign());
   let asking = $state(false);
   let requestStatus = $state('');
-  let contextRequest = $state<{ session: string; step: string; reference: string; after: string } | null>(null);
+  type ContextRequest = { session: string; step: string; reference: string; after: string; missing: boolean; node: string; action: AgentEvent['action'] };
+  let contextRequests = $state<ContextRequest[]>([]);
+  let requestEpoch = 0;
   const embedded = isEmbedded();
   const windows = $derived(workflowWindows(events, updateMode, updatesFrom));
   const steps = $derived(showHistory ? [...windows.saved, ...windows.current] : windows.current);
   const chosen = $derived(steps.find(step => step.id === selected));
+  const chosenRequest = $derived(contextRequests.find(request => request.session === session && request.reference === (chosen?.reference_id ?? chosen?.id)));
   $effect(() => { if (diffOpen && (!chosen || !hasFileDiff(chosen))) diffOpen = false; });
   $effect(() => {
-    if (contextRequest && contextRequest.session === session && contextRequest.step === selected && events.some(event => event.context_id === contextRequest!.reference && BigInt(event.id) > BigInt(contextRequest!.after))) {
-      requestStatus = 'The agent added more context.'; contextRequest = null;
-    }
+    const answered = contextRequests.filter(request => events.some(event =>
+      event.source === 'agent' && event.session_id === request.session && event.node_name === request.node && event.action === request.action &&
+      BigInt(event.id) > BigInt(request.after) && (event.context_id === request.reference || (request.missing && event.change_id === request.reference))
+    ));
+    if (!answered.length) return;
+    const current = answered.find(request => request.session === session && request.reference === (chosen?.reference_id ?? chosen?.id));
+    if (current) requestStatus = current.missing ? 'The agent added an explanation.' : 'The agent added more context.';
+    contextRequests = contextRequests.filter(request => !answered.includes(request));
   });
   type NativeWindow = Window & { stefNativeReady?: () => Promise<void> };
   const selectionKey = () => 'stef-selection:' + session;
   const historyKey = () => 'stef-history:' + session + ':' + updatesFrom;
   function changeDesign(value: Design) { design = value; saveDesign(value); }
+  function resetRequests() { requestEpoch++; contextRequests = []; requestStatus = ''; asking = false; }
   function toggleHistory(value = !showHistory) {
     showHistory = value;
     try { localStorage.setItem(historyKey(), String(value)); } catch { /* History is still available in this view. */ }
   }
 
   async function askContext() {
-    if (!chosen || asking || !connected) return;
+    if (!chosen || asking || chosenRequest || !connected || updateMode === 'disabled') return;
     const target = events.find(event => event.id === (chosen.reference_id ?? chosen.id));
     if (!target) return;
     asking = true; requestStatus = '';
     const targetSession = session, targetStep = chosen.id;
     const after = events.at(-1)?.id ?? '0';
+    const missing = Boolean(chosen.explanation_pending);
+    const epoch = requestEpoch;
+    const queued: ContextRequest = { session, step: targetStep, reference: target.id, after, missing, node: target.node_name, action: target.action };
+    contextRequests = [...contextRequests, queued];
     try {
-      const reporter = [...events].reverse().find(event => event.source === 'agent' && !event.category)?.agent_id ?? '*';
-      const text = 'Explain this retained step more clearly. Reply using report_event with context_id="' + target.id + '", the node from this note, action="' + target.action + '", a short summary and a fuller user-facing why. Update this step only; do not generate other file explanations.';
+      const exactReporter = [...events].reverse().find(event => event.source === 'agent' && event.session_id === target.session_id && event.node_name === target.node_name && event.action === target.action && (event.context_id === target.id || event.change_id === target.id))?.agent_id;
+      const reporter = missing ? '*' : exactReporter ?? (target.source === 'agent' ? target.agent_id : '*');
+      const text = (missing ? 'Explain why you made this exact saved-file change. Only answer if this change is attributable to your task; otherwise leave it pending. ' : 'Explain this retained step more clearly. ') + 'Reply using report_event with context_id="' + target.id + '", the node from this note, action="' + target.action + '", a short summary and ' + (missing ? 'a brief user-facing why. ' : 'a fuller user-facing why. ') + 'Update this step only; do not generate other file explanations.';
       const response = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session, node_name: target.node_name, target_agent: reporter, kind: 'question', text }) });
-      if (!response.ok) throw new Error('Could not ask for more context.');
-      if (session === targetSession && selected === targetStep) { requestStatus = 'Asked. The agent can respond at its next check-in.'; contextRequest = { session, step: targetStep, reference: target.id, after }; }
-    } catch (cause) { if (session === targetSession && selected === targetStep) requestStatus = cause instanceof Error ? cause.message : 'Could not ask for more context.'; }
-    finally { asking = false; }
+      if (!response.ok) throw new Error(missing ? 'Could not request an explanation.' : 'Could not ask for more context.');
+      if (epoch === requestEpoch && session === targetSession && selected === targetStep && contextRequests.some(request => request.reference === target.id)) requestStatus = 'Asked. The agent can respond at its next check-in.';
+    } catch (cause) {
+      if (epoch === requestEpoch) {
+        contextRequests = contextRequests.filter(request => request.reference !== target.id || request.session !== targetSession);
+        if (session === targetSession && selected === targetStep) requestStatus = cause instanceof Error ? cause.message : 'Could not send the request.';
+      }
+    } finally { if (epoch === requestEpoch) asking = false; }
   }
 
   async function changeUpdates(mode: UpdateMode) {
@@ -72,7 +90,7 @@
       if (!response.ok) throw new Error('Could not change updates.');
       const settings = await response.json();
       if (!isUpdateMode(settings.update_mode)) throw new Error('Could not change updates.');
-      if (settings.update_mode !== previousMode) { toggleHistory(false); diffOpen = false; requestStatus = ''; contextRequest = null; }
+      if (settings.update_mode !== previousMode) { toggleHistory(false); diffOpen = false; resetRequests(); }
       updateMode = settings.update_mode;
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change updates.'; throw cause; }
   }
@@ -81,7 +99,6 @@
     selected = selected === id ? null : id;
     diffOpen = false;
     requestStatus = '';
-    contextRequest = null;
     note = ''; noteStatus = ''; noteOpen = false;
     if (selected) localStorage.setItem(selectionKey(), selected);
     else localStorage.removeItem(selectionKey());
@@ -93,7 +110,7 @@
       const response = await fetch('/api/sessions/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session }) });
       if (!response.ok) throw new Error('Could not clear this workflow.');
       const snapshot = await response.json();
-      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; requestStatus = ''; showHistory = false; localStorage.removeItem(selectionKey()); }
+      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; resetRequests(); showHistory = false; localStorage.removeItem(selectionKey()); }
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not clear this workflow.'; }
     finally { busy = false; }
   }
@@ -113,16 +130,21 @@
       if (data.type === 'snapshot') {
         const boundary = data.updates_from && /^\d+$/.test(data.updates_from) ? data.updates_from : '0';
         const windowChanged = boundary !== updatesFrom || (isUpdateMode(data.update_mode) && data.update_mode !== updateMode);
-        if (windowChanged) { showHistory = false; diffOpen = false; requestStatus = ''; contextRequest = null; }
+        if (windowChanged) { showHistory = false; diffOpen = false; resetRequests(); }
         updatesFrom = boundary;
         if (isUpdateMode(data.update_mode)) updateMode = data.update_mode;
         const id = data.session_id ?? 'local';
         const changed = id !== session;
         const resumed = changed && Boolean(session);
         session = id; events = data.events ?? [];
-        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; requestStatus = ''; contextRequest = null; showHistory = localStorage.getItem(historyKey()) === 'true'; }
+        const retainedRequests = contextRequests.filter(request => events.some(event => event.id === request.reference));
+        if (retainedRequests.length !== contextRequests.length) {
+          if (!retainedRequests.length) resetRequests();
+          else contextRequests = retainedRequests;
+        }
+        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; resetRequests(); showHistory = localStorage.getItem(historyKey()) === 'true'; }
         else if (windowChanged) toggleHistory(false);
-        if (!workflowSteps(events).some(step => step.id === selected)) { selected = null; localStorage.removeItem(selectionKey()); }
+        if (!workflowSteps(events).some(step => step.id === selected)) { selected = null; requestStatus = ''; localStorage.removeItem(selectionKey()); }
         if (resumed && selected && !workflowWindows(events, updateMode, updatesFrom).current.some(step => step.id === selected)) toggleHistory(true);
       } else if (!data.event.session_id || data.event.session_id === session) {
         events = [...events.filter(event => event.id !== data.event.id), data.event].slice(-5000);
@@ -140,12 +162,16 @@
     {#if updateMode === 'disabled'}<div class="empty"><p>Updates disabled</p></div>{:else}
     {#if windows.saved.length}<div class="history-control"><button onclick={() => toggleHistory()}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
     <div class="workflow-layout" class:interactive={design === 'interactive'}>
-    <GraphCanvas {steps} {selected} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : noteOpen ? 208 : 144}>
+    <GraphCanvas {steps} {selected} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
       {#snippet detail(step)}
         {#if design === 'minimal'}
         <section class="step-detail" aria-label="Why this step">
-          <p>{step.why || (step.source === 'watcher' ? 'File saved. Waiting for the agent’s explanation.' : 'Waiting for the agent’s explanation.')}</p>
+          <p>{step.why || (step.source === 'watcher' ? 'The agent hasn’t explained this save yet.' : 'The agent hasn’t explained this step yet.')}</p>
           <small class="file" title={step.node_name}>{step.node_name === '@workflow' ? 'Current task' : step.node_name}</small>
+          {#if step.explanation_pending}
+            <button class="request-explanation" onclick={askContext} disabled={!connected || asking || Boolean(chosenRequest)}>{asking || chosenRequest ? 'Request queued' : 'Request explanation'}</button>
+          {/if}
+          {#if requestStatus}<small class="request-status" role="status">{requestStatus}</small>{/if}
           {#if hasFileDiff(step)}<button class="show-diff" onclick={() => diffOpen = true}>Show diff</button>{/if}
           {#if embedded && step.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: step.node_name })}>Open {shortName(step.node_name)}</button>{/if}
           {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
@@ -159,7 +185,7 @@
     {#if design === 'interactive'}
       <div class="interactive-detail">
         {#if chosen}
-          <ChangeVisual step={chosen} {steps} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || contextRequest?.step === chosen.id} {requestStatus} />
+          <ChangeVisual step={chosen} {steps} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
           <section class="step-detail" aria-label="Suggest for this step">
             {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: chosen.node_name })}>Open {shortName(chosen.node_name)}</button>{/if}
             {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}

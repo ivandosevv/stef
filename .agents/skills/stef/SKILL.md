@@ -75,10 +75,14 @@ In milestones mode, report only major steps with brief reasons through
 report_event. Use the real action, running/ready state, and reported parents
 to support its local visualization. Skip file explanations and per-edit check-ins.
 
-In files mode, every eligible saved text-file revision appears automatically. After each
-edit tool, call get_state once with settle_ms=300 to allow the watcher debounce,
-then report_changes using exact pending change_id values for every file you
-changed. Send one batch with 2–4 word summaries and short user-facing reasons
+In files mode, every eligible saved text-file revision appears automatically.
+Prepare its brief reason while preparing the edit. After each edit tool, use
+the exact pending IDs from a trusted post-edit reminder, or call get_state once
+with settle_ms=300 for the watcher debounce. Immediately report_changes for
+every file you changed, before another edit, test, or final reply. When tool
+orchestration is available, sequence the successful edit, bounded check-in, and
+exact report in one call without another model turn between them. Send one batch
+with 2–4 word summaries and short user-facing reasons
 (about 12 words). Include entry points, helper files, tests, docs, configuration,
 and edits made by your cooperating agents. A multi-file patch needs a reason for
 each file; a later revision needs a new explanation. Do not wait until the final
@@ -86,6 +90,24 @@ reply. Before finishing, check pending_changes once and explain your remaining
 edits. Only explain changes you can attribute to your task; other edits stay
 visibly unexplained. Per-file explanations can use more agent tokens than major
 milestones; no measured token amount is promised.
+
+Codex and Claude PostToolUse hooks can return bounded metadata reminders for
+their concrete edit paths in files mode. They neither generate reasons nor
+consume developer questions. Generated PostToolUse handlers deliver their context
+before the agent resumes, with a bounded local wait and fail-open errors. Rerun
+setup to migrate older async stef handlers; changed definitions may need host
+review. Async Claude output can wait for the next user turn. Host trust/loading
+still matters. Other clients keep the MCP contract without guessed hooks.
+Bounded reminders disclose omitted revision/path counts. Report included IDs
+first, then use POST /api/explanation-reminder with session_id and remaining
+relative paths from the actual edit (at most 50 paths per request, settle_ms=0).
+This avoids unrelated pending files crowding out recovery. Query again only after
+an accepted batch makes progress or for the next path batch. Never poll or treat
+a host's truncated preview as the complete file list.
+If the host has not loaded stef tools, the existing executable accepts the same
+report_changes JSON through stdin with --report-changes --repo <verified-root>
+--daemon <verified-endpoint>. This uses MCP to an existing root-matched daemon;
+it neither starts another agent nor executes edits. Use only current exact IDs.
 
 In disabled mode, stop reporting and additional check-ins for the rest of this
 turn. Read the mode again at the start of the next task. Saved history is retained;
@@ -98,7 +120,8 @@ for the agent's short reasons. Avoid hidden reasoning.
 Minimal and Interactive are local presentation choices. Switching design,
 selecting a step, viewing saved history, and navigating diffs make no requests
 for extra AI output. Do not generate richer explanations merely because the
-user chose Interactive. Explain more queues an explicit developer question.
+user chose Interactive. Explain more queues an explicit developer question;
+Request explanation asks for the missing reason on that exact saved revision.
 When that question arrives in feedback, answer only its referenced retained
 step using report_event with context_id, matching the note's node and action,
 and a concise fuller user-facing why. This updates the original step without

@@ -34,6 +34,9 @@ func Claude(raw []byte, root string) (telemetry.Activity, error) {
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return telemetry.Activity{}, err
 	}
+	if cursorOwnTool(input.Tool) {
+		return telemetry.Activity{}, ErrIgnored
+	}
 	if input.CWD != "" {
 		cwd, err := filepath.EvalSymlinks(input.CWD)
 		if err != nil || cwd != root {
@@ -95,15 +98,30 @@ func Claude(raw []byte, root string) (telemetry.Activity, error) {
 	return a, err
 }
 func Send(ctx context.Context, endpoint, clientName string, input io.Reader) error {
+	_, err := forward(ctx, endpoint, clientName, input, false)
+	return err
+}
+
+type delivery struct {
+	raw        []byte
+	root       string
+	activity   telemetry.Activity
+	httpClient *http.Client
+}
+
+// forward is shared by observation-only callers and model-visible reminders.
+// It sends one sanitized lifecycle observation, never raw hook input.
+func forward(ctx context.Context, endpoint, clientName string, input io.Reader, strict bool) (delivery, error) {
+	var delivered delivery
 	if err := mcp.ValidateEndpoint(endpoint); err != nil {
-		return err
+		return delivered, err
 	}
 	raw, err := io.ReadAll(io.LimitReader(input, 256*1024+1))
 	if err != nil {
-		return err
+		return delivered, err
 	}
 	if len(raw) > 256*1024 {
-		return fmt.Errorf("hook payload exceeds 256 KiB")
+		return delivered, fmt.Errorf("hook payload exceeds 256 KiB")
 	}
 	httpClient := &http.Client{Timeout: 750 * time.Millisecond, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	var activity telemetry.Activity
@@ -111,64 +129,74 @@ func Send(ctx context.Context, endpoint, clientName string, input io.Reader) err
 	if clientName == "claude" || clientName == "codex" || clientName == "cursor" {
 		request, err := http.NewRequestWithContext(ctx, "GET", base+"/healthz", nil)
 		if err != nil {
-			return err
+			return delivered, err
 		}
 		response, err := httpClient.Do(request)
 		if err != nil {
-			return err
+			return delivered, err
 		}
 		var health struct {
-			Repo   string `json:"repo"`
-			Name   string `json:"name"`
-			Status string `json:"status"`
+			Repo    string `json:"repo"`
+			Name    string `json:"name"`
+			Status  string `json:"status"`
+			Version string `json:"version"`
 		}
 		err = json.NewDecoder(response.Body).Decode(&health)
 		response.Body.Close()
 		if err != nil {
-			return err
+			return delivered, err
 		}
-		if clientName == "cursor" && (response.StatusCode != http.StatusOK || health.Name != "stef" || health.Status != "ok") {
-			return fmt.Errorf("endpoint is not a compatible stef companion")
+		if response.StatusCode != http.StatusOK || health.Name != "stef" || health.Status != "ok" || (strict && health.Version != "0.3.0") {
+			return delivered, fmt.Errorf("endpoint is not a compatible stef companion")
 		}
+		if !filepath.IsAbs(health.Repo) {
+			return delivered, fmt.Errorf("companion root must be absolute")
+		}
+		root, err := filepath.EvalSymlinks(health.Repo)
+		if err != nil {
+			return delivered, fmt.Errorf("resolve companion root: %w", err)
+		}
+		delivered.root = root
 		if clientName == "codex" {
-			activity, err = Codex(raw, health.Repo)
+			activity, err = Codex(raw, root)
 		} else if clientName == "cursor" {
-			activity, err = Cursor(raw, health.Repo)
+			activity, err = Cursor(raw, root)
 		} else {
-			activity, err = Claude(raw, health.Repo)
+			activity, err = Claude(raw, root)
 		}
 		if errors.Is(err, ErrIgnored) {
-			return nil
+			return delivered, nil
 		}
 		if err != nil {
-			return err
+			return delivered, err
 		}
 	} else if clientName == "generic" {
 		if err := json.Unmarshal(raw, &activity); err != nil {
-			return err
+			return delivered, err
 		}
 	} else {
-		return fmt.Errorf("unsupported hook client %q", clientName)
+		return delivered, fmt.Errorf("unsupported hook client %q", clientName)
 	}
 	if _, err := activity.Event(); err != nil {
-		return err
+		return delivered, err
 	}
 	data, err := json.Marshal(activity)
 	if err != nil {
-		return err
+		return delivered, err
 	}
 	request, err := http.NewRequestWithContext(ctx, "POST", base+"/api/activity", bytes.NewReader(data))
 	if err != nil {
-		return err
+		return delivered, err
 	}
 	request.Header.Set("Content-Type", "application/json")
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return err
+		return delivered, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
-		return fmt.Errorf("activity rejected (HTTP %d)", response.StatusCode)
+		return delivered, fmt.Errorf("activity rejected (HTTP %d)", response.StatusCode)
 	}
-	return nil
+	delivered.raw, delivered.activity, delivered.httpClient = raw, activity, httpClient
+	return delivered, nil
 }

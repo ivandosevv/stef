@@ -411,3 +411,53 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   remain separate tests. This work prepares the connection paths rather than
   bypassing those client controls. Windows command generation is tested; actual
   Windows execution and remote/cloud-agent observation remain unverified.
+
+## Prompt explanations and missing-reason recovery
+
+- The live audit found all 58 retained revisions eventually explained, with
+  a 16.3-second median delay and a 93.4-second maximum. The repair couples each
+  successful edit, one bounded check-in, and exact reasons in one orchestration
+  call when available. Across the first 46 source saves during this fix, the
+  measured median fell to 0.414 seconds and the maximum to 1.003 seconds. These
+  measurements describe this agent's reporting, not a universal host guarantee.
+- Codex/Claude PostToolUse reminders return standard model-visible context for
+  concrete edit paths in Every file mode. Generated handlers deliver it before
+  the agent resumes, with bounded waits and fail-open errors. Legacy async stef
+  handlers migrate without changing other hooks or custom timeouts. Claude's
+  old async delivery can wait for the next user turn.
+- A read-only reminder endpoint filters paths before its 50-result cap and
+  returns atomic chat/mode/window metadata without code or developer notes.
+  Hook output discloses omitted revision/path counts, including long paths and
+  oversized edits, and directs bounded discovery for remaining own revisions.
+  The stdin reporting fallback uses the official Streamable HTTP MCP client
+  after checking the existing daemon's root and compatible health.
+- Missing saved-file reasons offer Request explanation in both designs.
+  Exact context_id or ordinary change_id replies resolve queued requests in
+  place while preserving historical diffs. Requests survive ordinary reconnects
+  and selection/design changes, and reset at chat, Clear, and reporting windows.
+  Unknown authors stay unexplained; explicit questions target the exact reporter
+  when known. Selection, design, history, and diffs submit no AI request.
+- make check and make test pass after the final hook changes: Go vet, backend
+  race tests, eight greeting cases, 34 UI tests, and zero Svelte diagnostics.
+  All 18 browser scenarios pass, including three new missing-reason cases. The
+  portable stef skill passes its validator. Existing upstream native webview
+  deprecation warnings remain outside this change.
+- The verified personal engine was rebuilt and reloaded headlessly on 4825,
+  preserving the active chat, Updates mode/window, and every retained event.
+  The live reminder endpoint was verified without consuming notes. Actual
+  Codex VS Code hook loading/trust and real named-host delivery remain unverified;
+  this conversation uses genuine local MCP reporting. A 300 ms observer settle
+  remains best effort, and passive observation never establishes author intent.
+- An isolated live browser watched the real VALIDATION.md edit (revision 1118).
+  The official MCP reporting fallback attached its exact agent reason in
+  0.222 seconds; the browser received it 205 ms after the save event. Selected
+  text and the historical diff showed that reason, and reload preserved it.
+  All checks passed with zero pending steps, JavaScript errors, or browser API
+  mutations. The screenshots were visually inspected. This tests the real local
+  stream/reporting path, without claiming invocation by the VS Code hook host.
+- The capped-reminder recovery regression places 60 unrelated pending files
+  before 30 edited files with long paths. After the bounded hook reports its
+  included IDs, the global receipt is still crowded by unrelated saves. The
+  prescribed path-filtered endpoint recovers every omitted own revision; all
+  30 edited files receive exact reasons and all 60 unrelated saves stay pending.
+  Recovery queries make progress through accepted batches rather than polling.
