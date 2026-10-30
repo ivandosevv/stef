@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte';
   import { workflowEdges, type AgentEvent } from '../lib';
-  let { steps, selected, reveal = null, onselect, connected, detail, detailHeight = 144 }: {
+  let { steps, selected, reveal = null, localScroll = false, onselect, connected, detail, detailHeight = 144 }: {
     steps: AgentEvent[]; selected: string | null; onselect: (id: string) => void;
-    reveal?: { id: string; version: number } | null;
+    reveal?: { id: string; version: number } | null; localScroll?: boolean;
     connected: boolean; detail: Snippet<[AgentEvent]>; detailHeight?: number;
   } = $props();
   let viewport: HTMLDivElement;
@@ -23,12 +23,21 @@
   const edges = $derived(workflowEdges(steps));
   $effect(() => {
     const target = reveal;
+    const scrollLocally = localScroll;
     if (!target) return;
     let active = true;
     void tick().then(() => {
       if (!active || selected !== target.id) return;
       const node = viewport?.querySelector<SVGForeignObjectElement>('[data-step-id="' + target.id + '"]');
-      node?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      if (!node) return;
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      if (scrollLocally) {
+        const bounds = viewport.getBoundingClientRect(), target = node.getBoundingClientRect();
+        const above = target.top - bounds.top - 12;
+        const below = target.bottom - bounds.bottom + 12;
+        const delta = above < 0 ? above : below > 0 ? below : 0;
+        if (delta) viewport.scrollTo({ top: viewport.scrollTop + delta, behavior });
+      } else node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior });
     });
     return () => { active = false; };
   });
@@ -44,7 +53,8 @@
   }
   onMount(() => { const observer = new ResizeObserver(() => availableWidth = viewport.clientWidth); observer.observe(viewport); return () => observer.disconnect(); });
 </script>
-<div class="workflow-canvas" bind:this={viewport}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="workflow-canvas" role="region" aria-label="Workflow changes" tabindex={localScroll ? 0 : undefined} bind:this={viewport}>
   {#if steps.length}
     <svg viewBox={'0 0 ' + width + ' ' + height} width={width} height={height} aria-label="Workflow steps and arrows">
       <defs><marker id="workflow-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path class="flow-arrowhead" d="M1 1L6 3.5L1 6" /></marker></defs>

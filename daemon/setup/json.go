@@ -22,10 +22,10 @@ func DecodeClientConfig(raw []byte, name string) (map[string]any, error) {
 		}
 		return document, nil
 	}
-	return DecodeJSONConfig(raw, client.Name == "vscode")
+	return DecodeJSONConfig(raw, client.Name == "vscode" || client.Name == "opencode")
 }
 
-// DecodeJSONConfig also accepts VS Code's JSON comments when allowComments is true.
+// DecodeJSONConfig also accepts documented JSON comments when allowComments is true.
 // Numbers retain their original precision; no configuration is rewritten by this helper.
 func DecodeJSONConfig(raw []byte, allowComments bool) (map[string]any, error) {
 	document, _, err := decodeJSONClient(raw, allowComments)

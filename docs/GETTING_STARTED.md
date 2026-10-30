@@ -55,9 +55,15 @@ does not request missing historical explanations.
 
 Use Design to choose Minimal or Interactive. Interactive shows the exact saved
 Git-style diff with wrapped lines and reported milestone paths beside the selected
-step. New changes select and scroll to the latest step in both designs; an open
-diff or unfinished suggestion defers following until you finish inspecting it. This visual
-choice makes no AI call. Click Explain more only when you want extra agent context;
+step. Scroll over the workflow to move its list; scroll over the selected file's
+properties to move only those details. On narrow panes the two regions stack and
+keep their separate scrolling. New changes select and reveal the latest step;
+an open diff or unfinished suggestion holds your position. Exploring a hunk,
+filter, line, or style sample holds the selected change until Return to latest.
+Select an exact line and choose Suggest about this line to open an editable
+context draft; it is sent only when you choose Send suggestion. Supported CSS
+changes can show an interactive style sample using the saved values, with its
+scope labeled. These local interactions make no AI call. Click Explain more only when you want extra agent context;
 the token warning applies to that explicit question, delivered at the next check-in.
 An unexplained file offers Request explanation in both designs. It asks about
 that exact save, and a normal file explanation also resolves its queued state.

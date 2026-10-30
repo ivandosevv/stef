@@ -106,7 +106,14 @@ reasons; Interactive shows the selected exact hunk's wrapped unified diff or a
 milestone's reported action, state, and parent paths. All previews are computed
 locally from saved events. Interactive and Show diff share the same parsed rows,
 old/new line numbers, prefixes, source text, and colors; Interactive wraps source
-without horizontal scrolling. Selecting another file or hunk resets the preview
+without horizontal scrolling. Interactive bounds the workflow and properties
+inside separate scroll containers with overscroll containment; narrow layouts
+stack those containers. Following scrolls only the workflow container. Selecting
+another file resets the properties pane; same-step late reasons retain its scroll.
+Deliberate map/filter/line/sample interactions pause following, and Return to
+latest resumes it without replacing a nonempty draft. Exact-line suggestions
+only open a bounded editable draft and focus it inside the properties pane.
+Selecting another file or hunk resets the preview
 scroll to its start; late reasons on the same revision preserve its position.
 Closing a diff restores the opener after rendering, with a selected-step fallback
 when following has replaced that button. Live tail step/revision changes select and reveal

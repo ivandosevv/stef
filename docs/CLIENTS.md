@@ -15,6 +15,7 @@ or universally push a user message into a running turn.
 | VS Code Copilot | vscode or copilot: .vscode/mcp.json | JSONC preservation and SDK transport tested; real Copilot task pending |
 | Gemini CLI | gemini: .gemini/settings.json | Project configuration and SDK transport tested; MCP-only adapter, real task pending |
 | Roo Code | roo: .roo/mcp.json | Project configuration and SDK transport tested; real task pending |
+| OpenCode local agent | opencode or open-code: project opencode.json, or existing opencode.jsonc | JSON/JSONC preservation and SDK command transport tested; actual OpenCode task/pane pending |
 | Devin Local / Desktop / CLI | devin: .devin/mcp_config.json | Current project format and SDK transport tested; real task pending |
 | JetBrains AI Assistant in IntelliJ and supported JetBrains IDEs | jetbrains or intellij: project-scoped JSON import in AI Assistant settings | Export and SDK transport tested; actual import/task/pane pending |
 | Cline, Windsurf / Cascade | cline or windsurf: generated JSON to merge in the client's MCP settings | Export and SDK transport tested; real tasks pending; Windsurf-specific current docs redirect to Devin |
@@ -27,7 +28,10 @@ The cursor option is for Cursor's agent and vscode is for Copilot. JetBrains
 targets AI Assistant's documented MCP settings; it does not certify every
 agent in IntelliJ or Junie.
 
-The current native binary runs on macOS ARM64. --headless supports other platforms.
+The current native archive targets macOS ARM64. Headless Linux and Windows amd64 source builds
+compile with CGO disabled. Those binaries have not been run on their target OS;
+compiling a target is distinct from verifying that target's editor/client. No public release asset or Homebrew tap is
+available yet, so `brew install stef` is not a working public installation command.
 
 Workflow histories are scoped to stable chat IDs. Codex/Claude lifecycle signals
 select new/resumed chats when loaded; otherwise use MCP set_session once and
@@ -37,6 +41,40 @@ client never reports cannot select a saved workflow automatically.
 
 Additional native hosts are planned. Hosted or remote agent execution needs an
 explicit event bridge and cannot be observed through local files alone.
+
+## One-command source setup
+
+With Git, Go 1.25+, Node 22.12+, npm, Python 3, and make already available, a checkout
+can build and enable the selected agent with one command:
+
+~~~sh
+./scripts/bootstrap.sh --client opencode --repo /absolute/path/to/personal/project
+~~~
+
+For a new checkout, download the same published script before running it, or use
+this single shell invocation after reviewing the source:
+
+~~~sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ivandosevv/stef/master/scripts/bootstrap.sh)" -- --client opencode --repo /absolute/path/to/personal/project
+~~~
+
+This is a source bootstrap, not a prebuilt installer. The default source lives in
+`<project>/.stef/runtime/stef`, which the observer ignores. `--source-dir` can
+instead reuse an explicitly chosen stef checkout; existing checkouts are never
+pulled, reset, or overwritten. Builds remain in that checkout. No toolchain,
+IDE extension, global client profile, or PATH entry is installed. macOS native
+builds also require Xcode Command Line Tools. `--build-only` builds without
+configuring or launching the companion. The eight isolated bootstrap tests use
+fake download/build commands, so they verify orchestration and confinement rather
+than a clean-machine installation with downloaded toolchains.
+
+The default `--view ide` starts the headless engine and returns its local URL.
+Opening that URL inside an editor still uses that editor's built-in browser.
+Use `--view native` on a supported macOS host to open the companion. The chosen
+MCP client must load/trust the new project entry, or import its generated entry,
+using its own controls. The current running model cannot acquire tools merely
+because a config file was saved. A terminal is a presentation environment; pick
+its actual agent, such as `codex`, `claude`, `hermes`, or `opencode`.
 
 ## Common stdio configuration
 
@@ -80,6 +118,7 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for the personal VS Code walkthroug
 stef --list-clients
 stef --enable --client cursor --view ide --repo /absolute/path/to/project
 stef --enable --client intellij --view ide --repo /absolute/path/to/project
+stef --enable --client opencode --view ide --repo /absolute/path/to/project
 ~~~
 
 Direct adapters extend the documented project file, preserve other servers and
@@ -110,7 +149,16 @@ are still discovered when that setting is off. Gemini and Roo setup enables
 MCP only; their hook payloads are not treated as Claude/Cursor payloads. Devin
 uses the current dedicated .devin/mcp_config.json, not older config*.json files.
 
-Official references: [Cursor](https://cursor.com/docs/mcp.md),
+OpenCode uses `mcp.stef.type = "local"` and a single `command` array containing
+the executable and all arguments. Setup extends the existing `opencode.json` or
+`opencode.jsonc` while preserving comments, unrelated servers, precise values,
+and explicit `enabled: false`/environment policies. If both project files exist,
+setup stops without changing either rather than guessing which file should own
+stef. Project configuration and managed tool policy can still prevent discovery
+or tool access; use `opencode mcp list` in the actual host to verify it.
+
+Official references: [OpenCode MCP](https://opencode.ai/docs/mcp-servers/),
+[OpenCode project config](https://opencode.ai/docs/config/), [Cursor](https://cursor.com/docs/mcp.md),
 [Cursor hooks](https://cursor.com/docs/hooks.md),
 [JetBrains AI Assistant](https://www.jetbrains.com/help/ai-assistant/mcp.html),
 [VS Code formats](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
@@ -163,6 +211,12 @@ For an explicitly chosen personal root, run:
 ~~~sh
 /absolute/path/to/stef/bin/stef --setup-codex --repo /absolute/path/to/your/personal/project --daemon http://127.0.0.1:4826
 ~~~
+
+Official OpenAI documentation confirms Codex CLI and IDE share MCP configuration,
+and `.codex/config.toml` applies only to trusted projects. Cloud orchestration
+can limit local MCP reachability and does not support hooks from local command
+configuration. Verify those environments separately; the local observer cannot
+see remote files without an explicit bridge.
 
 Codex requires a trusted project before loading its local config. Review the exact
 passive hooks once with **/hooks** in the Codex CLI; panel hook-trust controls have

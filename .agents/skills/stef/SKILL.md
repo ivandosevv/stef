@@ -11,6 +11,8 @@ Locate the stef executable on PATH; in the stef source checkout use bin/stef at
 the repository root. If it is missing there, build with make build (make install
 first when dependencies are absent). Outside the checkout, use the user's known
 release/source location; do not invent a public Brew tap or download URL.
+The repository's source bootstrap is an explicit fallback with build prerequisites;
+read docs/CLIENTS.md in that checkout for the current command and limits.
 
 For the Codex panel in VS Code, use its built-in browser editor:
 
@@ -22,7 +24,7 @@ Choose --client for the actual agent, independently of its outer IDE: Codex in
 Cursor still uses codex; Claude Code in IntelliJ still uses claude. Run
 stef --list-clients for documented setup paths and their remaining client steps.
 Direct project setup is available for codex, claude, cursor, vscode (Copilot),
-gemini, roo, and devin. intellij aliases jetbrains (AI Assistant); jetbrains,
+opencode, gemini, roo, and devin. intellij aliases jetbrains (AI Assistant); jetbrains,
 windsurf, cline, hermes, and generic export a configuration for explicit import.
 Use --view native for a terminal's native window or when explicitly requested.
 Honor the actual editor's documented presentation capabilities and the user's

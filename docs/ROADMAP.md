@@ -24,6 +24,9 @@
 - [x] Saved Updates modes for explained milestones, every file, or Disabled
 - [x] On-demand saved-revision Git-style diffs beside live AI explanations
 - [x] Minimal/Interactive local views and selected-change hunk/milestone visuals
+- [x] Independent workflow/properties scrolling, keyboard and touch containment
+- [x] Local style-effect samples, changed-section exploration, and exact-line suggestions
+- [x] OpenCode project setup and a source-bootstrap command with explicit prerequisites
 - [x] Future-only reporting windows without historical explanation backlogs
 - [x] Explicit selected-step AI context requests without automatic enrichment
 - [x] Multi-client project setup and host-specific MCP import exports
@@ -39,7 +42,7 @@
 - [ ] Publish a public release and Homebrew tap; verify clean-machine setup
 - [ ] Sign/notarize macOS binaries and verify additional Mac architectures
 - [ ] Build/verify Windows and Linux native hosts without requiring IDE plugins
-- [ ] Verify real Claude Code, Codex, Cursor, VS Code, IntelliJ-agent, and Hermes sessions
+- [ ] Verify real Claude Code, Codex, Cursor, VS Code, IntelliJ-agent, Hermes, and OpenCode sessions
       (Codex startup verified; full task execution awaits valid CLI authentication)
 - [ ] Add each client's documented lifecycle adapter where available
 - [ ] Offer client-native MCP presentation only when that client actually supports it
@@ -48,6 +51,7 @@
 
 - [ ] Persist offered/acknowledged states for human notes
 - [ ] Surface agent answers and observed response status without guessing acceptance
+- [ ] Add explicit agent-provided behavior demos for changes that local style samples cannot represent
 - [ ] Support explicit task plans and parallel tool invocation IDs
 - [ ] Associate observed writes with client activity using evidence
 - [ ] Add TypeScript/JavaScript, Python, and Rust symbol adapters

@@ -36,7 +36,10 @@ directed arrows, a compact suggestion field, per-chat Clear, and the requested
 small appearance picker (Dark, Light, Eye comfort, System), and compact Updates
 picker (Major milestones, Every file, Disabled).
 The Design picker offers Minimal or Interactive. Interactive renders the selected
-revision's wrapped Git-style diff or a milestone's action/state/reported paths locally.
+revision's wrapped Git-style diff, local change exploration, or a milestone's
+reported paths. Keep workflow and properties scrolling independent. Style-effect
+samples must use supported exact captured values and clearly label their scope;
+never invent arbitrary application behavior or execute source in the preview.
 New live changes follow the newest step locally without moving keyboard focus.
 Preserve open diffs and unfinished suggestions until inspection ends.
 Design changes and history viewing make no model calls. Fuller context is requested

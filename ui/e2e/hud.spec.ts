@@ -93,6 +93,15 @@ async function expectLatestVisible(page: Page) {
   }
 }
 
+async function wheelOver(page: Page, pane: Locator, delta: number) {
+  const box = await pane.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.wheel(0, delta);
+  // Let the compositor process the wheel before checking unchanged boundary panes.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
 test('the minimal live workflow has arrows, brief reasons and an inline suggestion', async ({ page, request }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?companion=1');
@@ -702,6 +711,7 @@ test('Interactive shows exact local revisions and requests more agent context on
   expect(state.feedback).toHaveLength(1);
   expect(state.feedback[0].node_name).toBe(revision.node_name);
   expect(state.feedback[0].text).toContain(revision.id);
+  await page.getByRole('button', { name: 'Return to latest', exact: true }).click();
   await writeFile(file, 'export const mode = "later unrelated revision";\n');
   await expect(fileSteps).toHaveCount(3);
   await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
@@ -730,6 +740,281 @@ test('Interactive shows exact local revisions and requests more agent context on
   expect(errors).toEqual([]);
 });
 
+
+for (const width of [860, 360]) {
+  test('Interactive contains wheel scrolling in each pane at ' + width + 'px', async ({ page, request }) => {
+    const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+    const feedbackRequests: unknown[] = [];
+    page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
+    await page.setViewportSize({ width, height: width === 360 ? 740 : 640 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/?companion=1');
+    const session = 'interactive-pane-scroll-' + width;
+    await request.post('/api/sessions/activate', { data: { session_id: session } });
+    await pickDesign(page, 'interactive');
+    const root = await isolatedRoot(request);
+    await Promise.all(Array.from({ length: 24 }, (_, index) => writeFile(resolve(root, 'scroll-' + width + '-' + index + '.ts'), 'export const filler = true;\n')));
+    await expect(page.getByTestId('workflow-step')).toHaveCount(24);
+    const name = 'scroll-long-' + width + '.ts';
+    await writeFile(resolve(root, name), Array.from({ length: 90 }, (_, index) => 'export const line' + index + ' = ' + index + ';').join('\n') + '\n');
+    await expect(page.getByTestId('workflow-step')).toHaveCount(25);
+    const fileStep = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
+    const revision = (await savedEvents(request, session)).find(event => event.source === 'watcher' && event.node_name === name)!;
+    await request.post('/api/events', { data: { ...report(session, name, 'Keep this save inspectable', 'Keep exact saved source available to inspect.'), action: revision.action, change_id: revision.id } });
+    const left = page.locator('.workflow-canvas');
+    const right = page.locator('.interactive-detail');
+    const code = right.getByRole('region', { name: 'Code diff', exact: true });
+    await expect.poll(() => left.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(400);
+    await expect.poll(() => right.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(400);
+    expect(await code.evaluate(node => node.scrollHeight > node.clientHeight + 1)).toBe(false);
+    await left.evaluate(node => node.scrollTop = 100);
+    await right.evaluate(node => node.scrollTop = 100);
+    await wheelOver(page, right, 180);
+    await expect.poll(() => right.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+    expect(await left.evaluate(node => node.scrollTop)).toBe(100);
+    const afterRight = await right.evaluate(node => node.scrollTop);
+    await wheelOver(page, left, 180);
+    await expect.poll(() => left.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+    expect(await right.evaluate(node => node.scrollTop)).toBe(afterRight);
+
+    for (const side of [right, left]) {
+      const other = side === right ? left : right;
+      for (const direction of [-1, 1]) {
+        await side.evaluate((node, end) => node.scrollTop = end ? node.scrollHeight : 0, direction === 1);
+        const boundary = await side.evaluate(node => node.scrollTop);
+        const otherTop = await other.evaluate(node => node.scrollTop);
+        await wheelOver(page, side, direction * 500);
+        await expect.poll(() => side.evaluate(node => node.scrollTop)).toBe(boundary);
+        expect(await other.evaluate(node => node.scrollTop)).toBe(otherTop);
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      }
+    }
+    await right.evaluate(node => node.scrollTop = 150);
+    await request.post('/api/events', { data: { ...report(session, name, 'Keep this save inspectable', 'Keep this saved source available to inspect.'), action: revision.action, context_id: revision.id } });
+    await expect(right).toContainText('Keep this saved source available to inspect.');
+    expect(await right.evaluate(node => node.scrollTop)).toBe(150);
+    await chooseStep(page.getByTestId('workflow-step').first());
+    await expect.poll(() => right.evaluate(node => node.scrollTop)).toBe(0);
+    await chooseStep(fileStep);
+    await expect.poll(() => right.evaluate(node => node.scrollTop)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true);
+    expect(feedbackRequests).toEqual([]);
+    expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('Interactive keyboard and touch scrolling stay in the selected pane', async ({ page, request }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?companion=1');
+  const session = 'interactive-pane-input';
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await pickDesign(page, 'interactive');
+  const root = await isolatedRoot(request);
+  await Promise.all(Array.from({ length: 20 }, (_, index) => writeFile(resolve(root, 'input-scroll-' + index + '.ts'), 'export const filler = true;\n')));
+  await expect(page.getByTestId('workflow-step')).toHaveCount(20);
+  await writeFile(resolve(root, 'input-scroll-long.ts'), Array.from({ length: 90 }, (_, index) => 'export const line' + index + ' = ' + index + ';').join('\n') + '\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(21);
+  const left = page.locator('.workflow-canvas');
+  const right = page.locator('.interactive-detail');
+  await left.evaluate(node => node.scrollTop = 100);
+  await right.evaluate(node => node.scrollTop = 0);
+  await right.focus();
+  await page.keyboard.press('PageDown');
+  await expect.poll(() => right.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+  expect(await left.evaluate(node => node.scrollTop)).toBe(100);
+  // Native PageDown can keep animating after the first observed movement.
+  const settle = async (pane: Locator) => pane.evaluate(node => new Promise<void>(resolve => {
+    let previous = node.scrollTop, still = 0;
+    const frame = () => {
+      const current = node.scrollTop;
+      still = current === previous ? still + 1 : 0;
+      previous = current;
+      if (still >= 6) resolve(); else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }));
+  await settle(right);
+  const rightTop = await right.evaluate(node => node.scrollTop);
+  await left.focus();
+  await page.keyboard.press('PageDown');
+  await expect.poll(() => left.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+  await settle(left);
+  expect(await right.evaluate(node => node.scrollTop)).toBe(rightTop);
+  await right.evaluate(node => node.scrollTop = 100);
+  const leftTop = await left.evaluate(node => node.scrollTop);
+  const touch = await page.context().newCDPSession(page);
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const box = await right.boundingBox();
+  expect(box).not.toBeNull();
+  const x = box!.x + box!.width / 2;
+  const start = box!.y + box!.height * .8;
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start }] });
+  for (let amount = 1; amount <= 6; amount++) {
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start - amount * 22 }] });
+  }
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => right.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+  expect(await left.evaluate(node => node.scrollTop)).toBe(leftTop);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await touch.detach();
+});
+
+test('Interactive change exploration stays local and drafts an exact line suggestion', async ({ page, request }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const feedbackRequests: unknown[] = [];
+  page.on('request', outgoing => { if (new URL(outgoing.url()).pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON()); });
+  await page.goto('/?companion=1');
+  const session = 'interactive-explore-change';
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await pickDesign(page, 'interactive');
+  const root = await isolatedRoot(request);
+  const name = 'explore-line.ts';
+  const file = resolve(root, name);
+  const before = ['export const head = "old";', ...Array.from({ length: 38 }, (_, index) => '// context ' + (index + 2)), 'export const tail = "old";'];
+  const after = ['export const head = "new";', ...before.slice(1, -1), 'export const tail = "new";'];
+  await writeFile(file, before.join('\n') + '\n');
+  const steps = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
+  await expect(steps).toHaveCount(1);
+  await writeFile(file, after.join('\n') + '\n');
+  await expect(steps).toHaveCount(2);
+  const revision = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.node_name === name).at(-1)!;
+  const why = 'Keep the head and tail changes understandable in their exact saved revision.';
+  await request.post('/api/events', { data: { ...report(session, name, 'Explain both changed sections', why), action: revision.action, change_id: revision.id } });
+  const panel = page.getByRole('region', { name: 'Selected change', exact: true });
+  const map = panel.getByRole('region', { name: 'Change map', exact: true });
+  await expect(map.getByTestId('hunk-map')).toHaveCount(2);
+  const second = map.getByRole('button', { name: /^Explore hunk 2:/ });
+  await second.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel.getByText('Hunk 2 of 2', { exact: true })).toBeVisible();
+  await expect(panel.locator('[data-kind="addition"] .diff-code')).toContainText(['export const tail = "new";']);
+  await panel.getByText('Filter source', { exact: true }).click();
+  await panel.getByRole('button', { name: 'Show added lines', exact: true }).click();
+  await expect(panel.locator('[data-kind="removal"], [data-kind="context"]')).toHaveCount(0);
+  await expect(panel.locator('[data-kind="addition"]')).toHaveCount(1);
+  const line = panel.getByRole('button', { name: 'Select added line 40', exact: true });
+  await line.focus();
+  await page.keyboard.press('Enter');
+  await expect(line).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.getByRole('button', { name: 'Suggest about this line', exact: true })).toBeVisible();
+  await writeFile(resolve(root, 'explore-arriving.ts'), 'export const arriving = true;\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(3);
+  await expect(steps.last()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeEnabled();
+  await panel.getByRole('button', { name: 'Suggest about this line', exact: true }).click();
+  const draft = page.getByRole('textbox', { name: 'Suggest something to the agent' });
+  await expect(draft).toBeFocused();
+  const text = await draft.inputValue();
+  expect(text).toContain(name);
+  expect(text).toContain(revision.id);
+  expect(text).toContain('40');
+  expect(text).toContain('export const tail = "new";');
+  expect(text.length).toBeLessThanOrEqual(500);
+  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeDisabled();
+  expect(feedbackRequests).toEqual([]);
+  expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expectLatestVisible(page);
+  await expect(draft).toHaveCount(0);
+  expect(feedbackRequests).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('style samples render exact small dimensions and real layout gaps', async ({ page, request }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?companion=1');
+  const session = 'interactive-small-style-effect';
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await pickDesign(page, 'interactive');
+  const root = await isolatedRoot(request);
+  const file = resolve(root, 'small-style-effect.css');
+  await writeFile(file, '.sample { width: 4px; height: 4px; gap: 4px; }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(1);
+  await writeFile(file, '.sample { width: 12px; height: 12px; gap: 12px; }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(2);
+  const effect = page.getByRole('region', { name: 'Style effect preview', exact: true });
+  const property = effect.getByRole('combobox', { name: 'Preview style property', exact: true });
+  const target = effect.getByTestId('style-effect-target');
+  for (const name of ['width', 'height', 'gap']) {
+    await property.selectOption({ label: name });
+    for (const [label, size] of [['Before style', 4], ['After style', 12]] as const) {
+      await effect.getByRole('button', { name: label, exact: true }).click();
+      await expect.poll(() => target.evaluate((node, dimension) => {
+        if (dimension !== 'gap') return node.getBoundingClientRect()[dimension as 'width' | 'height'];
+        const children = node.querySelectorAll('span');
+        return children[1].getBoundingClientRect().left - children[0].getBoundingClientRect().right;
+      }, name)).toBe(size);
+    }
+  }
+  expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
+});
+
+test('Interactive previews a safe exact style effect with working comparison controls', async ({ page, request }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const feedbackRequests: unknown[] = [], externalRequests: string[] = [];
+  page.on('request', outgoing => {
+    const url = new URL(outgoing.url());
+    if (url.pathname === '/api/feedback' && outgoing.method() === 'POST') feedbackRequests.push(outgoing.postDataJSON());
+    if (url.hostname !== '127.0.0.1') externalRequests.push(outgoing.url());
+  });
+  await page.setViewportSize({ width: 860, height: 640 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?companion=1');
+  const session = 'interactive-style-effect';
+  await request.post('/api/sessions/activate', { data: { session_id: session } });
+  await pickDesign(page, 'interactive');
+  const root = await isolatedRoot(request);
+  const name = 'style-effect.css';
+  const file = resolve(root, name);
+  await writeFile(file, '.sample { color: #000000; padding: 8px; border-radius: 4px; }\n');
+  const steps = page.locator('[data-testid="workflow-step"][title^="' + name + '"]');
+  await expect(steps).toHaveCount(1);
+  await writeFile(file, '.sample { color: #ffffff; padding: 24px; border-radius: 16px; }\n');
+  await expect(steps).toHaveCount(2);
+  const panel = page.getByRole('region', { name: 'Selected change', exact: true });
+  const effect = panel.getByRole('region', { name: 'Style effect preview', exact: true });
+  await expect(effect).toContainText('Style sample');
+  await expect(effect).toContainText('This sample previews the changed style, not the running app.');
+  const property = effect.getByRole('combobox', { name: 'Preview style property', exact: true });
+  const options = await property.locator('option').evaluateAll(elements => elements.map(element => ({ label: element.textContent ?? '', value: (element as HTMLOptionElement).value })));
+  const padding = options.find(option => option.label.includes('padding'));
+  expect(padding).toBeTruthy();
+  await property.selectOption(padding!.value);
+  const target = effect.getByTestId('style-effect-target');
+  await effect.getByRole('button', { name: 'Before style', exact: true }).click();
+  await expect.poll(() => target.evaluate(node => getComputedStyle(node).paddingLeft)).toBe('8px');
+  await effect.getByRole('button', { name: 'After style', exact: true }).click();
+  await expect.poll(() => target.evaluate(node => getComputedStyle(node).paddingLeft)).toBe('24px');
+  const position = effect.getByRole('slider', { name: 'Style effect position', exact: true });
+  await position.focus();
+  await page.keyboard.press('Home');
+  await expect(position).toHaveValue('0');
+  await page.keyboard.press('End');
+  await expect(position).toHaveValue('100');
+  for (let count = 0; count < 50; count++) await page.keyboard.press('ArrowLeft');
+  await expect(position).toHaveValue('50');
+  await expect.poll(() => target.evaluate(node => parseFloat(getComputedStyle(node).paddingLeft))).toBe(16);
+  await page.setViewportSize({ width: 360, height: 740 });
+  expect(await effect.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeEnabled();
+  expect(feedbackRequests).toEqual([]);
+  expect(externalRequests).toEqual([]);
+  await page.getByRole('button', { name: 'Return to latest', exact: true }).click();
+  await writeFile(resolve(root, 'effect-unsafe.css'), '.sample { padding: 8px; }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(3);
+  await writeFile(resolve(root, 'effect-unsafe.css'), '.sample { padding: url(https://stef-preview-invalid.example/leak); }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(4);
+  await expect(panel.getByTestId('style-effect')).toHaveCount(0);
+  await writeFile(resolve(root, 'effect-logic.ts'), 'export const enabled = false;\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(5);
+  await expect(panel.getByTestId('style-effect')).toHaveCount(0);
+  expect(externalRequests).toEqual([]);
+  expect(feedbackRequests).toEqual([]);
+  expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
+  expect(errors).toEqual([]);
+});
 
 for (const design of ['minimal', 'interactive'] as const) {
   test(design + ' follows rapid saved-file changes and preserves history across reload and reconnect', async ({ page, request }) => {

@@ -496,3 +496,57 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   wrapped it without horizontal overflow. Reload kept the selection and reason.
   There were zero browser API mutations or JavaScript errors. Live screenshots
   were visually inspected; artifacts/follow-diff-live.json retains the receipts.
+
+## Independent Interactive panes and local effect exploration
+
+- Interactive now bounds the workflow and selected properties to independent
+  scroll containers with overscroll containment. Desktop panes sit beside each
+  other; narrow panes stack. Wheel, keyboard and touch input move only the
+  targeted pane, including at its scroll boundaries, without moving the page.
+  Newly selected files reset properties to the top; late explanations keep the
+  same selected pane's position. Following reveals only the workflow node.
+- Changed-section maps, optional source filters, keyboard-selectable lines, and
+  exact revision/line/source suggestion drafts are local. Deliberate exploration
+  holds the selection until Return to latest. An existing nonempty suggestion
+  is preserved; an explicit targeted suggestion focuses its draft in the right
+  pane and queues no agent request until sent. Open diffs and unfinished drafts
+  retain their existing deferral, history, chat, Updates and Clear behavior.
+- Supported paired literal CSS changes have an interactive scoped style sample.
+  Before/After transitions and the slider alter its actual sanitized property.
+  Source custom-property names retain case; unsupported, ambiguous, variable,
+  executable and URL values are excluded. Four-to-twelve pixel width/height and
+  actual flex-gap measurements guard against misleading clamped sample effects.
+  Reduced motion disables transitions. The sample never executes project source
+  or claims to reconstruct arbitrary application behavior.
+- make check and make test pass, with backend race checks, the greeting cases,
+  41 UI tests, and zero Svelte/TypeScript diagnostics. All 31 browser scenarios
+  pass, including independent pane boundaries, keyboard/touch, exact source,
+  targeted drafts, safe style controls and measured small dimensions. A native
+  PageDown assertion now waits for motion to settle before comparing the other
+  pane. Bootstrap syntax and all eight isolated boundary tests pass.
+- OpenCode is the thirteenth documented setup client. Its local command array,
+  JSON/JSONC settings/policy preservation, root confinement, endpoint reuse and
+  real official-SDK stdio reporting pass alongside the prior client formats.
+  Linux and Windows AMD64 headless binaries cross-compile successfully; their
+  runtime execution and native presentation remain separate checks.
+- The source bootstrap completed a real build against this checkout with an
+  isolated target and the existing Go 1.25.0 toolchain selected for the command.
+  The older default Go 1.23 correctly failed its prerequisite check. This tests
+  source reuse/build, alongside isolated clone/enable-boundary tests; it does
+  not certify a fresh machine or toolchain installation. No global profile,
+  PATH, IDE extension, or other project's configuration was changed.
+- The verified personal daemon was reloaded headlessly on 4825, retaining the
+  active chat, Every file window and all 273 saved events. Public release assets
+  and a usable Brew tap remain unpublished. Actual named-client sessions, host
+  trust/loading, browser mounting and remote-file bridges remain explicit gaps.
+- A live browser watched actual VALIDATION.md revision 1296, selected/revealed it
+  automatically, and received its exact explanation in 0.327 seconds. Wheel input
+  on either pane left the other pane and page stationary. Saved source matched
+  Show diff, wrapped at desktop/360px widths, and retained selection/reason on
+  reload. There were no browser API mutations or JavaScript errors.
+  artifacts/interactive-panes-live.json records these checks.
+- An isolated CSS fixture was visually inspected before/after and at 360px.
+  The style slider changed the actual sample padding from 8px to 24px; no external
+  requests or JavaScript errors occurred. The fixture stayed under the isolated
+  test root and was removed afterward; no synthetic event entered the live chat.
+  artifacts/style-visual-review.json and screenshots retain this visual evidence.

@@ -19,14 +19,18 @@ only for new saves from that point. Earlier revisions remain behind Show saved
 history and never become an automatic explanation backlog after re-enabling.
 
 Design offers Minimal and Interactive. Minimal keeps the current quiet workflow.
-Interactive adds a selected-change panel with wrapped Git-style diff hunks, navigation,
-and reported milestone actions, states, and paths. Switching design, clicking
+Interactive separates the workflow and selected-change details into independently
+scrolling panes. Wrapped Git-style hunks, a compact change map, exact-line
+suggestions, and local style samples let you explore the saved change. Style
+samples show supported saved CSS values on a sample, not an inferred application
+behavior. Milestones retain their brief reason and reported paths. Switching design, clicking
 steps, or inspecting history makes no model call. Explain more alone queues an
 explicit request for fuller AI context, with a token warning, answered at the
 agent's next check-in. The answer updates the same step and preserves its diff.
 New live changes select and reveal the latest step automatically in either design.
 An open diff or unfinished suggestion holds that position until you close it or
-finish the draft; chat reloads restore your selection. Following is entirely local.
+finish the draft; chat reloads restore your selection. Deliberate change exploration
+holds that step until Return to latest. Following and exploration are entirely local.
 An unexplained save offers Request explanation in either design. It queues one
 question for that exact revision; clicking or viewing a step never requests AI
 output by itself. A normal per-file reply also resolves the queued request.
@@ -36,7 +40,7 @@ Eye comfort uses a warm background and muted green accents. Your choice is
 saved in this view across reloads and chats; System follows the OS appearance.
 
 stef accompanies the agent across editors. One --enable --client command handles
-Codex, Claude Code, Cursor, VS Code Copilot, Gemini CLI, Roo Code, and Devin
+Codex, Claude Code, Cursor, VS Code Copilot, OpenCode, Gemini CLI, Roo Code, and Devin
 project configuration. JetBrains AI Assistant (including IntelliJ), Cline,
 Windsurf, Hermes, and other MCP hosts get an import file with client-specific
 instructions. Run stef --list-clients for the available paths. Clients for the
@@ -79,9 +83,18 @@ through **Restart extension**. Project hook trust is documented through **/hooks
 in the Codex CLI; panel hook-trust controls remain unverified. Claude Code uses
 **/mcp** to approve/reconnect its project server. See [Getting started](docs/GETTING_STARTED.md).
 
-Public Homebrew/plugin distribution is not published. An agent first needs this
-source checkout, the local release package, or another known executable location.
-The earlier local release archive predates the minimal workflow increment.
+Public Homebrew and prebuilt release distribution is not published. A one-command
+source setup is available from this checkout:
+
+~~~sh
+./scripts/bootstrap.sh --client codex --repo /absolute/path/to/personal/project
+~~~
+
+It requires the build tools listed above plus Git, Python 3, npm, and make. It
+builds inside the chosen project's .stef/runtime/stef, then configures and starts
+stef for that client. Existing source is reused without pulling over edits.
+See [source setup and client limits](docs/CLIENTS.md#one-command-source-setup) for
+the download command, source reuse, import clients, and host trust/loading.
 
 ## One workflow per chat
 

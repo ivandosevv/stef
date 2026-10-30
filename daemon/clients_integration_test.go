@@ -50,13 +50,13 @@ func TestGeneratedClientCommandsConnectThroughTheSameMCP(t *testing.T) {
 			}
 			servers := document[definition.ServerKey].(map[string]any)
 			target := servers["stef"].(map[string]any)
-			args := []string{}
-			for _, arg := range target["args"].([]any) {
-				args = append(args, arg.(string))
+			configuredCommand, args, err := clientsetup.StdioCommand(target, definition.Name)
+			if err != nil {
+				t.Fatal(err)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			command := exec.Command(target["command"].(string), args...)
+			command := exec.Command(configuredCommand, args...)
 			command.Dir = root
 			client := sdk.NewClient(&sdk.Implementation{Name: "configured-" + definition.Name, Version: "test"}, nil)
 			session, err := client.Connect(ctx, &sdk.CommandTransport{Command: command}, nil)

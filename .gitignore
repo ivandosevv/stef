@@ -25,3 +25,6 @@ daemon/assets/*
 .gemini/settings.json
 .roo/mcp.json
 .devin/mcp_config.json
+
+/opencode.json
+/opencode.jsonc

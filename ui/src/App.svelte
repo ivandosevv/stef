@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import GraphCanvas from './components/GraphCanvas.svelte';
   import ThemePicker from './components/ThemePicker.svelte';
   import UpdatesPicker from './components/UpdatesPicker.svelte';
@@ -31,6 +31,10 @@
   let contextRequests = $state<ContextRequest[]>([]);
   let requestEpoch = 0;
   let typing = $state(false);
+  let inspecting = $state(false);
+  let detailsViewport = $state<HTMLDivElement>();
+  let detailsKey = '';
+  let noteInput = $state<HTMLInputElement>();
   let followed = $state(false);
   let pendingFollow = $state<string | null>(null);
   let reveal = $state<{ id: string; version: number } | null>(null);
@@ -40,7 +44,14 @@
   const steps = $derived(showHistory ? [...windows.saved, ...windows.current] : windows.current);
   const chosen = $derived(steps.find(step => step.id === selected));
   const chosenRequest = $derived(contextRequests.find(request => request.session === session && request.reference === (chosen?.reference_id ?? chosen?.id)));
-  const followBlocked = $derived(diffOpen || typing || Boolean(note.trim()));
+  const followBlocked = $derived(diffOpen || typing || Boolean(note.trim()) || inspecting);
+  $effect(() => {
+    const viewport = detailsViewport;
+    const key = session + ':' + stepKey(chosen);
+    if (!viewport || key === detailsKey) return;
+    detailsKey = key;
+    viewport.scrollTo({ top: 0, behavior: 'auto' });
+  });
   $effect(() => {
     if (!pendingFollow || followBlocked) return;
     const latest = windows.current.at(-1);
@@ -71,7 +82,7 @@
       else localStorage.removeItem(selectionKey());
     } catch { /* Selection still works when view storage is unavailable. */ }
   }
-  function resetFollow() { pendingFollow = null; reveal = null; followed = false; }
+  function resetFollow() { pendingFollow = null; reveal = null; followed = false; inspecting = false; }
   const stepKey = (step?: AgentEvent) => step ? step.id + ':' + (step.reference_id ?? step.id) : '';
   function followUpdate(previous?: AgentEvent) {
     const latest = workflowWindows(events, updateMode, updatesFrom).current.at(-1);
@@ -81,11 +92,29 @@
       reveal = { id: latest.id, version: ++revealVersion };
     }
   }
-  function changeDesign(value: Design) { design = value; saveDesign(value); }
+  function changeDesign(value: Design) { design = value; if (value === 'minimal') inspecting = false; saveDesign(value); if (selected) reveal = { id: selected, version: ++revealVersion }; }
+  function inspectChange() { inspecting = true; }
+  function resumeFollowing() {
+    if (diffOpen || note.trim()) return;
+    inspecting = false; typing = false;
+    pendingFollow = windows.current.at(-1)?.id ?? null;
+  }
+  function suggestSelection(text: string) {
+    if (!chosen || note.trim()) return;
+    inspecting = true; noteOpen = true; note = text.slice(0, 500); noteStatus = '';
+    void tick().then(() => {
+      noteInput?.focus({ preventScroll: true });
+      if (!noteInput || !detailsViewport) return;
+      const input = noteInput.getBoundingClientRect(), pane = detailsViewport.getBoundingClientRect();
+      const delta = input.top < pane.top ? input.top - pane.top - 12 : input.bottom > pane.bottom ? input.bottom - pane.bottom + 12 : 0;
+      if (delta) detailsViewport.scrollTo({ top: detailsViewport.scrollTop + delta, behavior: 'auto' });
+    });
+  }
   function resetRequests() { requestEpoch++; contextRequests = []; requestStatus = ''; asking = false; }
   function toggleHistory(value = !showHistory) {
     showHistory = value;
     if (!value && !windows.current.some(step => step.id === selected)) {
+      inspecting = false;
       note = ''; noteStatus = ''; noteOpen = false; typing = false;
     }
     try { localStorage.setItem(historyKey(), String(value)); } catch { /* History is still available in this view. */ }
@@ -141,7 +170,8 @@
   }
   function dismissSelection() {
     if (!selected || diffOpen) return;
-    if (pendingFollow && (noteOpen || typing || note.trim())) {
+    if (pendingFollow && (noteOpen || typing || note.trim() || inspecting)) {
+      inspecting = false;
       note = ''; noteStatus = ''; noteOpen = false; typing = false;
     } else select(selected);
   }
@@ -210,7 +240,7 @@
     {#if updateMode === 'disabled'}<div class="empty"><p>Updates disabled</p></div>{:else}
     {#if windows.saved.length}<div class="history-control"><button onclick={() => toggleHistory()}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
     <div class="workflow-layout" class:interactive={design === 'interactive'}>
-    <GraphCanvas {steps} {selected} {reveal} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
+    <GraphCanvas {steps} {selected} {reveal} localScroll={design === 'interactive'} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
       {#snippet detail(step)}
         {#if design === 'minimal'}
         <section class="step-detail" aria-label="Why this step">
@@ -223,7 +253,7 @@
           {#if hasFileDiff(step)}<button class="show-diff" onclick={() => diffOpen = true}>Show diff</button>{/if}
           {#if embedded && step.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: step.node_name })}>Open {shortName(step.node_name)}</button>{/if}
           {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
-            <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
+            <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} bind:this={noteInput} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
             {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
           {/if}
         </section>
@@ -231,13 +261,15 @@
       {/snippet}
     </GraphCanvas>
     {#if design === 'interactive'}
-      <div class="interactive-detail">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="interactive-detail" role="region" aria-label="Selected file properties" tabindex="0" bind:this={detailsViewport}>
+        {#if inspecting}<div class="inspection-control"><span>{pendingFollow ? 'New work is waiting.' : 'Exploring this change.'}</span><button onclick={resumeFollowing} disabled={diffOpen || Boolean(note.trim())} title={note.trim() ? 'Send or discard your suggestion first.' : 'Follow the latest work again.'}>Return to latest</button></div>{/if}
         {#if chosen}
-          <ChangeVisual step={chosen} {steps} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
+          <ChangeVisual step={chosen} {steps} oninspect={inspectChange} onsuggest={suggestSelection} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
           <section class="step-detail" aria-label="Suggest for this step">
             {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: chosen.node_name })}>Open {shortName(chosen.node_name)}</button>{/if}
             {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
-              <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
+              <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} bind:this={noteInput} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
               {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
             {/if}
           </section>

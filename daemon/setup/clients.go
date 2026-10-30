@@ -39,6 +39,7 @@ var clientCatalog = []Client{
 	{Name: "gemini", Label: "Gemini CLI", SetupMode: "project", ConfigPath: ".gemini/settings.json", ServerKey: "mcpServers", NextStep: "Start Gemini CLI from this project, review project trust, and use /mcp status or gemini mcp list to verify stef.", DocsURL: "https://geminicli.com/docs/tools/mcp-server/"},
 	{Name: "roo", Label: "Roo Code", SetupMode: "project", ConfigPath: ".roo/mcp.json", ServerKey: "mcpServers", NextStep: "Open Roo Code's MCP Servers view and approve/reconnect stef from the project configuration.", DocsURL: "https://docs.roocode.com/features/mcp/using-mcp-in-roo"},
 	{Name: "devin", Label: "Devin Local", SetupMode: "project", ConfigPath: ".devin/mcp_config.json", ServerKey: "mcpServers", NextStep: "Open Devin Local's MCP configuration and reconnect stef from this project's .devin/mcp_config.json. Start a new session if needed.", DocsURL: "https://docs.devin.ai/cli/extensibility/mcp/configuration"},
+	{Name: "opencode", Label: "OpenCode", SetupMode: "project", ConfigPath: "opencode.json", ServerKey: "mcp", NextStep: "Start or restart OpenCode from this project and run opencode mcp list to verify stef. Project or managed tool policies may still disable its tools.", DocsURL: "https://opencode.ai/docs/mcp-servers/"},
 	{Name: "jetbrains", Label: "JetBrains AI Assistant", SetupMode: "import", ConfigPath: ".stef/clients/jetbrains.json", ServerKey: "mcpServers", NextStep: "In Settings > Tools > AI Assistant > Model Context Protocol (MCP), add a STDIO server, select Project level, paste the generated JSON, and apply/reconnect.", DocsURL: "https://www.jetbrains.com/help/ai-assistant/mcp.html"},
 	{Name: "windsurf", Label: "Windsurf / Cascade", SetupMode: "import", ConfigPath: ".stef/clients/windsurf.json", ServerKey: "mcpServers", NextStep: "Open your Windsurf/Cascade agent's MCP configuration, merge the generated mcpServers.stef entry, and reconnect. The generated file has not been imported into the client.", DocsURL: "https://code.visualstudio.com/docs/agents/reference/mcp-configuration"},
 	{Name: "cline", Label: "Cline", SetupMode: "import", ConfigPath: ".stef/clients/cline.json", ServerKey: "mcpServers", NextStep: "In Cline's MCP Servers > Configure > Configure MCP Servers, merge the generated mcpServers.stef entry and reconnect. The generated file has not been imported into the client.", DocsURL: "https://docs.cline.bot/mcp/configuring-mcp-servers"},
@@ -50,7 +51,7 @@ func Clients() []Client { return append([]Client(nil), clientCatalog...) }
 
 func LookupClient(name string) (Client, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
-	aliases := map[string]string{"claude-code": "claude", "intellij": "jetbrains", "intellij-idea": "jetbrains", "pycharm": "jetbrains", "webstorm": "jetbrains", "goland": "jetbrains", "rider": "jetbrains", "copilot": "vscode", "vs-code": "vscode", "gemini-cli": "gemini", "roo-code": "roo", "devin-local": "devin", "devin-desktop": "devin"}
+	aliases := map[string]string{"claude-code": "claude", "intellij": "jetbrains", "intellij-idea": "jetbrains", "pycharm": "jetbrains", "webstorm": "jetbrains", "goland": "jetbrains", "rider": "jetbrains", "copilot": "vscode", "vs-code": "vscode", "gemini-cli": "gemini", "roo-code": "roo", "devin-local": "devin", "devin-desktop": "devin", "open-code": "opencode"}
 	if canonical, ok := aliases[name]; ok {
 		name = canonical
 	}
@@ -73,6 +74,12 @@ func Configure(repo, executable, endpoint, name string) (Configuration, error) {
 	}
 	if !filepath.IsAbs(executable) {
 		return Configuration{}, fmt.Errorf("stef executable must be an absolute path")
+	}
+	if client.Name == "opencode" {
+		client.ConfigPath, err = openCodeConfigPath(repo)
+		if err != nil {
+			return Configuration{}, err
+		}
 	}
 	result := Configuration{Client: client.Name, ConfigPath: client.ConfigPath, HooksPath: client.HooksPath, Configured: client.SetupMode == "project", NextStep: client.NextStep}
 	switch client.Name {
@@ -105,6 +112,11 @@ func configureJSONClient(repo, executable, endpoint string, client Client) error
 	if client.Name == "vscode" {
 		server["type"] = "stdio"
 	}
+	if client.Name == "opencode" {
+		command := []any{executable}
+		command = append(command, server["args"].([]any)...)
+		server = map[string]any{"type": "local", "command": command, "enabled": true}
+	}
 	if client.Name == "cline" {
 		server["disabled"] = false
 		server["autoApprove"] = []any{}
@@ -123,7 +135,7 @@ func configureJSONClient(repo, executable, endpoint string, client Client) error
 }
 
 func extendJSONClient(raw []byte, client Client, desired map[string]any) ([]byte, error) {
-	document, normalized, err := decodeJSONClient(raw, client.Name == "vscode")
+	document, normalized, err := decodeJSONClient(raw, client.Name == "vscode" || client.Name == "opencode")
 	if err != nil {
 		return nil, fmt.Errorf("invalid existing %s: %w", client.ConfigPath, err)
 	}
@@ -138,16 +150,78 @@ func extendJSONClient(raw []byte, client Client, desired map[string]any) ([]byte
 		current, ok := value.(map[string]any)
 		currentArgs, _ := json.Marshal(current["args"])
 		desiredArgs, _ := json.Marshal(desired["args"])
-		if !ok || current["command"] != desired["command"] || !bytes.Equal(currentArgs, desiredArgs) || (current["type"] != nil && current["type"] != "stdio") || (client.Name == "vscode" && current["type"] != "stdio") || current["url"] != nil {
+		currentCommand, _ := json.Marshal(current["command"])
+		desiredCommand, _ := json.Marshal(desired["command"])
+		validType := current["type"] == nil || current["type"] == "stdio"
+		if client.Name == "vscode" {
+			validType = current["type"] == "stdio"
+		}
+		if client.Name == "opencode" {
+			validType = current["type"] == "local"
+		}
+		if !ok || !bytes.Equal(currentCommand, desiredCommand) || !bytes.Equal(currentArgs, desiredArgs) || !validType || current["url"] != nil {
 			return nil, fmt.Errorf("existing stef MCP configuration differs; review %s", client.ConfigPath)
 		}
 		return raw, nil // Preserve explicit policies, including disabled=true and tool restrictions.
 	}
-	if len(raw) > 0 && client.Name == "vscode" {
+	if len(raw) > 0 && (client.Name == "vscode" || client.Name == "opencode") {
 		return appendJSONCServer(raw, normalized, client.ServerKey, servers, desired)
 	}
 	servers["stef"] = desired
 	document[client.ServerKey] = servers
 	data, err := json.MarshalIndent(document, "", "  ")
 	return append(data, '\n'), err
+}
+
+// Use the existing project format; never create a competing config or guess precedence.
+func openCodeConfigPath(repo string) (string, error) {
+	root, err := os.OpenRoot(repo)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	chosen := ""
+	for _, path := range []string{"opencode.json", "opencode.jsonc"} {
+		_, err := root.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if chosen != "" {
+			return "", fmt.Errorf("both opencode.json and opencode.jsonc exist; review which project config should contain stef")
+		}
+		chosen = path
+	}
+	if chosen == "" {
+		chosen = "opencode.json"
+	}
+	return chosen, nil
+}
+
+// StdioCommand reads a client's documented command shape without changing its policy.
+func StdioCommand(server map[string]any, name string) (string, []string, error) {
+	command, _ := server["command"].(string)
+	values, ok := server["args"].([]any)
+	if name == "opencode" {
+		all, valid := server["command"].([]any)
+		if !valid || len(all) == 0 || server["type"] != "local" {
+			return "", nil, fmt.Errorf("OpenCode stef must be a local command array")
+		}
+		command, _ = all[0].(string)
+		values, ok = all[1:], true
+	}
+	if command == "" || !ok || server["url"] != nil {
+		return "", nil, fmt.Errorf("stef is not a managed stdio command")
+	}
+	args := make([]string, len(values))
+	for i, value := range values {
+		arg, valid := value.(string)
+		if !valid {
+			return "", nil, fmt.Errorf("stef arguments must be strings")
+		}
+		args[i] = arg
+	}
+	return command, args, nil
 }

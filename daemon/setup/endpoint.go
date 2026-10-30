@@ -23,6 +23,15 @@ func Endpoint(repo, client string) (string, error) {
 	clients := append([]Client{selected}, Clients()...)
 	seen := map[string]bool{}
 	for _, definition := range clients {
+		if definition.Name == "opencode" {
+			definition.ConfigPath, err = openCodeConfigPath(repo)
+			if err != nil {
+				if definition.Name == selected.Name {
+					return "", err
+				}
+				continue
+			}
+		}
 		if seen[definition.ConfigPath] {
 			continue
 		}
@@ -53,24 +62,21 @@ func Endpoint(repo, client string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("existing stef configuration in %s must be an object", definition.ConfigPath)
 		}
-		args, ok := server["args"].([]any)
-		if !ok {
+		_, args, err := StdioCommand(server, definition.Name)
+		if err != nil {
 			return "", fmt.Errorf("existing stef configuration in %s is not a managed stdio server", definition.ConfigPath)
 		}
 		endpoint, trackedRoot := "http://127.0.0.1:4820", ""
 		for i, arg := range args {
-			flag, ok := arg.(string)
-			if !ok {
-				return "", fmt.Errorf("stef arguments in %s must be strings", definition.ConfigPath)
-			}
+			flag := arg
 			if flag != "--daemon" && flag != "--repo" {
 				continue
 			}
 			if i+1 >= len(args) {
 				return "", fmt.Errorf("incomplete stef arguments in %s", definition.ConfigPath)
 			}
-			value, ok := args[i+1].(string)
-			if !ok || value == "" {
+			value := args[i+1]
+			if value == "" {
 				return "", fmt.Errorf("invalid stef arguments in %s", definition.ConfigPath)
 			}
 			if flag == "--daemon" {
