@@ -2,8 +2,11 @@ package hooks_test
 
 import (
 	"encoding/json"
-	"github.com/ivandosevv/stef/daemon/hooks"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/ivandosevv/stef/daemon/hooks"
 )
 
 func TestClaudeLifecycleObservations(t *testing.T) {
@@ -60,18 +63,37 @@ func TestClaudeWorkersRemainDistinctAndResume(t *testing.T) {
 }
 
 func TestHookDoesNotLeakPathsOutsideTheTrackedRoot(t *testing.T) {
-	a, err := hooks.Claude([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/outside/secret.txt"}}`), "/personal/project")
-	if err != nil {
-		t.Fatal(err)
+	fixture := t.TempDir()
+	root, outside := filepath.Join(fixture, "project"), filepath.Join(fixture, "outside")
+	for _, directory := range []string{filepath.Join(root, "src"), outside} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if a.NodeName != "" {
-		t.Fatal("outside path exposed")
+	secret, main := filepath.Join(outside, "secret.txt"), filepath.Join(root, "src", "main.go")
+	for _, path := range []string{secret, main} {
+		if err := os.WriteFile(path, []byte("fixture content"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	a, err = hooks.Claude([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"src/main.go"}}`), "/personal/project")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.NodeName != "src/main.go" {
-		t.Fatal("relative project path missing")
+	for _, tc := range []struct{ name, path, want string }{
+		{"outside absolute", secret, ""},
+		{"outside traversal", filepath.Join("..", "outside", "secret.txt"), ""},
+		{"project absolute", main, "src/main.go"},
+		{"project relative", filepath.Join("src", "main.go"), "src/main.go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": map[string]string{"file_path": tc.path}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			activity, err := hooks.Claude(raw, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if activity.NodeName != tc.want {
+				t.Fatalf("observed node = %q, want %q for %q", activity.NodeName, tc.want, tc.path)
+			}
+		})
 	}
 }

@@ -91,13 +91,26 @@ func TestClaudeSetupPreservesExistingSkill(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(skillDir, "helper.md"), []byte("custom helper"), 0600); err != nil {
 				t.Fatal(err)
 			}
+			link := filepath.Join(repo, ".claude/skills/stef")
+			var originalLink os.FileInfo
+			var originalTarget string
 			if linked {
 				if err := os.MkdirAll(filepath.Join(repo, ".claude/skills"), 0700); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Symlink("../../.agents/skills/stef", filepath.Join(repo, ".claude/skills/stef")); err != nil {
+				if err := os.Symlink("../../.agents/skills/stef", link); err != nil {
 					t.Fatal(err)
 				}
+				info, err := os.Lstat(link)
+				if err != nil || info.Mode()&os.ModeSymlink == 0 {
+					t.Fatalf("fixture is not a skill symlink: %v", err)
+				}
+				originalLink = info
+				target, err := os.Readlink(link)
+				if err != nil {
+					t.Fatal(err)
+				}
+				originalTarget = target
 			}
 			if err := Claude(repo, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err != nil {
 				t.Fatal(err)
@@ -111,9 +124,13 @@ func TestClaudeSetupPreservesExistingSkill(t *testing.T) {
 				t.Fatalf("existing helper changed: %v", err)
 			}
 			if linked {
-				target, err := os.Readlink(filepath.Join(repo, ".claude/skills/stef"))
-				if err != nil || target != "../../.agents/skills/stef" {
-					t.Fatalf("checkout skill link replaced: %v", err)
+				after, err := os.Lstat(link)
+				if err != nil || after.Mode()&os.ModeSymlink == 0 || !os.SameFile(originalLink, after) || after.Mode() != originalLink.Mode() || !after.ModTime().Equal(originalLink.ModTime()) {
+					t.Fatalf("checkout skill link changed: %v", err)
+				}
+				target, err := os.Readlink(link)
+				if err != nil || target != originalTarget {
+					t.Fatalf("checkout skill link target = %q, want %q: %v", target, originalTarget, err)
 				}
 			}
 		})

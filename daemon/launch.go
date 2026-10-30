@@ -108,7 +108,10 @@ func ensureCompanionMode(ctx context.Context, endpoint, root string, headless, n
 	done := make(chan error, 1)
 	go func() { done <- child.Wait() }()
 	stop := func() {
-		_ = child.Process.Signal(os.Interrupt)
+		if err := child.Process.Signal(os.Interrupt); err != nil {
+			// Windows cannot send Interrupt; do not race the MCP client's deadline.
+			_ = child.Process.Kill()
+		}
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
