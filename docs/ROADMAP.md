@@ -43,8 +43,8 @@
 ## Next delivery work
 
 - [x] Active macOS, Windows, and Linux build/test and six-target release workflows
-- [ ] Verify the hosted checks on all three operating systems
-- [ ] Publish the public portable release and verify fresh-project setup
+- [x] Hosted build, installer, daemon, and MCP checks on all three operating systems
+- [x] Public v0.3.0 portable release and fresh-project installation on macOS/Linux
 - [ ] Offer an optional Homebrew tap
 - [ ] Sign/notarize macOS binaries and verify additional Mac architectures
 - [x] Portable browser/IDE runtime with safe native fallback on every OS

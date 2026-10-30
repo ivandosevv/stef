@@ -1,4 +1,36 @@
-# Local validation, 2026-10-30
+# Validation
+
+## Current version, 2026-10-31
+
+[stef v0.3.0](https://github.com/ivandosevv/stef/releases/tag/v0.3.0) has six
+portable packages for macOS, Windows, and Linux on x64 and ARM64.
+
+- GitHub checks and release verification passed on macOS ARM64, Windows x64,
+  and Linux x64. Each verified real stdio MCP, a private workspace, and exact
+  saved diffs with no external tools on PATH. Windows also passed four
+  PowerShell/Python installer tests using release fixtures and a real binary,
+  including Unicode paths and reinstall.
+- Fresh installs from the public GitHub URL passed on macOS ARM64 and Linux
+  ARM64. Only standard installer utilities were available on PATH. Setup kept
+  the original project, defaulted to the IDE view, used an absolute MCP command,
+  and reused the same daemon and configuration on reinstall. The installed
+  binaries then passed private-workspace and exact-diff MCP checks with PATH empty.
+- All 20 shell-installer regressions passed on macOS and actual Linux Docker,
+  including separate HTTP header/body limits and preserving previous installs.
+  Python installer checks, package checks, and skill validation passed.
+- make check and make test passed, including the Go race suite and 42 UI tests.
+  All 33 browser scenarios passed. Actual native macOS rendering, scoped human
+  feedback, and clean owned shutdown passed.
+- The personal daemon was reloaded with its journal and workspace membership
+  preserved. Test companions were confined to isolated projects and cleaned up.
+
+These checks verify stef and its MCP transport. Client-specific task and pane
+verification remains listed in [CLIENTS.md](CLIENTS.md). Normal MCP trust, reload,
+or import steps still belong to the client. No public Homebrew tap was tested.
+
+## Historical validation, 2026-10-30
+
+Earlier notes below describe each increment and its limits at that time.
 
 The 0.3.0 native companion prototype was built and verified on macOS ARM64.
 All working files and fixtures are inside the personal stef project; Go unit tests
