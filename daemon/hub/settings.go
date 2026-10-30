@@ -36,6 +36,7 @@ func (h *Hub) SetUpdateMode(mode telemetry.UpdateMode) (telemetry.Settings, erro
 			return telemetry.Settings{}, err
 		}
 		h.updateMode = mode
+		h.updatesFrom = h.next + 1
 		h.captureEpoch++
 		// Claims cannot survive a period when ownership changes are not recorded.
 		h.claims = make(map[string]map[string]time.Time)
@@ -48,5 +49,5 @@ func (h *Hub) suppressLocked(e telemetry.Event) bool {
 	if h.updateMode == telemetry.UpdatesDisabled {
 		return true
 	}
-	return h.updateMode == telemetry.UpdatesMilestones && (e.Source == "watcher" || e.Source == "hook" || e.ChangeID != "")
+	return h.updateMode == telemetry.UpdatesMilestones && (e.Source == "watcher" || e.Source == "hook" || e.ChangeID != "") && e.ContextID == ""
 }

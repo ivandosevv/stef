@@ -325,3 +325,43 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   validation. The resident personal engine remains healthy on port 4825.
 - AGENTS.md records the user's request to commit and push completed, verified
   milestones as development continues. No background scheduler was installed.
+
+## Adaptive reporting and interactive design
+
+- Design now offers Minimal and Interactive as independent local presentation
+  choices. Interactive shows the selected saved revision's before/after hunks
+  and line numbers, or a milestone's action, state, explanation, and reported
+  parent paths. Design, selection, history, hunk navigation, and Show diff
+  neither request agent output nor change the reporting mode.
+- Each actual Updates change starts a new inclusive updates_from boundary.
+  No-op changes preserve it. Recovery derives the boundary from the journal;
+  current pending files and compact model activity exclude earlier windows.
+  Stale or mixed-window automatic explanation batches are rejected atomically.
+  Earlier work remains available through an explicit saved-history control.
+- Explain more alone queues an exact retained-step question with a token warning.
+  A matching context_id reply updates that step's explanation without replacing
+  captured code, creating another workflow item, or changing claims. Historical
+  context works in files and milestones; Disabled still suppresses reporting.
+  Requested file context satisfies only that exact revision's pending reason.
+- make check and make test pass: Go vet, backend race tests, eight greeting
+  cases, and thirty-four UI unit tests, with zero Svelte/TypeScript errors or
+  warnings. All fifteen browser E2E scenarios pass, including future-only
+  reporting across reloads, mode suppression, history restoration, explicit
+  context, exact escaped source, narrow Light/Eye comfort layouts, and the
+  optional embedded host's file-open action in both designs. The portable skill
+  also passes the Skill Creator validator.
+- Independent source review found no remaining reporting/context integration
+  defects. Light and Eye comfort screenshots were visually inspected. The
+  production renderer is embedded and the verified personal engine reloaded
+  headlessly on 4825, retaining the existing chat and Every file preference.
+- A live browser inspected actual daemon/hub/changes.go revision 748 and its
+  MCP reason, historical ChangeVisual.svelte revision 711, and real verification
+  milestone 758. Design switches, saved-history access, diff opening, and reload
+  left event IDs, chat, mode, and reporting boundary unchanged; no mutation
+  requests or JavaScript errors occurred. artifacts/stef-adaptive-live.json and
+  its screenshots retain that evidence. No synthetic feedback was submitted
+  to the live chat; the explicit context path is covered in isolated E2E tests.
+- Mode changes reach a cooperating agent at its next check-in. These checks do
+  not certify automatic tool discovery or chat-switch signals in arbitrary
+  IDE agents. This conversation continues to use the genuine local stdio MCP
+  bridge. Token costs remain unmeasured; local visuals call no model.

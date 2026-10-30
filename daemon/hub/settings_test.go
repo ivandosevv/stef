@@ -53,8 +53,8 @@ func TestUpdateModePersistsAcrossChatsAndClearWithoutDeletingHistory(t *testing.
 		t.Fatalf("recovery lost policy or history: %+v", got)
 	}
 	setMode(t, h, telemetry.UpdatesFiles)
-	if pending, count := h.PendingChanges("chat-a", 50); len(pending) != 1 || count != 1 {
-		t.Fatal("mode switch deleted earlier retained observations")
+	if pending, count := h.PendingChanges("chat-a", 50); len(pending) != 0 || count != 0 || len(h.Snapshot().Events) != 1 {
+		t.Fatal("mode switch either backfilled or deleted earlier retained observations")
 	}
 }
 

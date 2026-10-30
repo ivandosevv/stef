@@ -49,6 +49,14 @@ The Updates control offers Major milestones, Every file, or Disabled. Every file
 warns that per-file explanations may use more tokens. The project's choice is
 saved across chats/restarts, and the agent learns changes at its next check-in.
 Disabled retains saved history and stops new recording/reporting.
+Every mode change starts a new reporting window. Every file requests explanations
+only for subsequent saves. Show saved history opens earlier work locally and
+does not request missing historical explanations.
+
+Use Design to choose Minimal or Interactive. Interactive shows exact before/after
+code hunks and reported milestone paths beside the selected step. This visual
+choice makes no AI call. Click Explain more only when you want extra agent context;
+the token warning applies to that explicit question, delivered at the next check-in.
 
 In Every file mode, each changed file needs a short agent-supplied reason. The MCP instructions/skill
 ask the agent to get_state with settle_ms=300 after each edit, then report_changes
@@ -69,7 +77,8 @@ conversation for later milestones/resume. This must be connected in the host;
 stef cannot observe an idle chat-tab switch that produces no signal.
 The selected step is remembered per chat. Diffs stay closed until requested,
 use the recorded revision rather than the current file, and make no model calls.
-Large captured previews show a truncation warning when incomplete.
+Large captured previews show a truncation warning when incomplete. An explicitly
+requested fuller explanation remains attached to its original step.
 The small appearance button beside Clear offers Dark, Light, Eye comfort (warm
 background), and System (follow the OS). Appearance is saved for this view;
 switching chats or clearing a workflow leaves that choice intact.

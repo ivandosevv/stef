@@ -54,7 +54,7 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 			http.Error(w, err.Error(), 400)
 			return
 		}
-		writeJSON(w, 200, mcp.SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()})
+		writeJSON(w, 200, mcp.SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()})
 	})
 	mux.HandleFunc("POST /api/sessions/clear", func(w http.ResponseWriter, r *http.Request) {
 		var input mcp.SessionInput

@@ -16,6 +16,7 @@ type Event struct {
 	SessionID   string   `json:"session_id,omitempty"`
 	ID          string   `json:"id"`
 	ChangeID    string   `json:"change_id,omitempty" jsonschema:"exact whole-file observation ID explained by this event"`
+	ContextID   string   `json:"context_id,omitempty" jsonschema:"retained visible step ID; only for developer-requested additional context"`
 	Timestamp   string   `json:"timestamp"`
 	AgentID     string   `json:"agent_id" jsonschema:"stable identifier of the reporting agent"`
 	NodeName    string   `json:"node_name" jsonschema:"repository-relative path or path#symbol"`
@@ -40,11 +41,17 @@ type Event struct {
 }
 
 func Normalize(e Event) (Event, error) {
-	if e.ChangeID != "" {
-		id, err := strconv.ParseUint(e.ChangeID, 10, 64)
-		if err != nil || id == 0 || e.ChangeID[0] == '0' || strings.IndexFunc(e.ChangeID, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-			return e, fmt.Errorf("change_id must be a positive event ID")
+	for _, link := range []struct{ name, value string }{{"change_id", e.ChangeID}, {"context_id", e.ContextID}} {
+		if link.value == "" {
+			continue
 		}
+		id, err := strconv.ParseUint(link.value, 10, 64)
+		if err != nil || id == 0 || link.value[0] == '0' || strings.IndexFunc(link.value, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return e, fmt.Errorf("%s must be a positive event ID", link.name)
+		}
+	}
+	if e.ChangeID != "" && e.ContextID != "" {
+		return e, fmt.Errorf("change_id and context_id cannot be combined")
 	}
 	if e.SessionID != "" {
 		if err := Session(e.SessionID); err != nil {

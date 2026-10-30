@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 type Input struct {
 	ChangeID  string   `json:"change_id,omitempty" jsonschema:"optional exact whole-file observation ID"`
+	ContextID string   `json:"context_id,omitempty" jsonschema:"retained visible step ID; only to answer developer-requested extra context"`
 	SessionID string   `json:"session_id,omitempty" jsonschema:"chat ID returned by set_session; omit only when hooks select the chat"`
 	AgentID   string   `json:"agent_id" jsonschema:"stable reporter ID"`
 	NodeName  string   `json:"node_name" jsonschema:"relative path or path#symbol"`
@@ -33,6 +35,7 @@ type Input struct {
 // Receipt deliberately excludes diffs, code, and repeated rationale from the model response.
 type Receipt struct {
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
+	UpdatesFrom           string                    `json:"updates_from"`
 	ReportingInstructions string                    `json:"reporting_instructions"`
 	ID                    string                    `json:"id"`
 	Accepted              bool                      `json:"accepted"`
@@ -48,6 +51,7 @@ type ChangesInput struct {
 }
 type ChangesReceipt struct {
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
+	UpdatesFrom           string                    `json:"updates_from"`
 	ReportingInstructions string                    `json:"reporting_instructions"`
 	Accepted              bool                      `json:"accepted"`
 	IDs                   []string                  `json:"ids"`
@@ -70,6 +74,7 @@ type StateEvent struct {
 }
 type State struct {
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
+	UpdatesFrom           string                    `json:"updates_from"`
 	ReportingInstructions string                    `json:"reporting_instructions"`
 	SessionID             string                    `json:"session_id"`
 	Repo                  string                    `json:"repo"`
@@ -80,6 +85,7 @@ type State struct {
 }
 type Publication struct {
 	UpdateMode            telemetry.UpdateMode      `json:"update_mode"`
+	UpdatesFrom           string                    `json:"updates_from"`
 	ReportingInstructions string                    `json:"reporting_instructions"`
 	Accepted              bool                      `json:"accepted"`
 	Event                 telemetry.Event           `json:"event"`
@@ -99,6 +105,7 @@ type SessionInput struct {
 type SessionReceipt struct {
 	SessionID             string               `json:"session_id"`
 	UpdateMode            telemetry.UpdateMode `json:"update_mode"`
+	UpdatesFrom           string               `json:"updates_from"`
 	ReportingInstructions string               `json:"reporting_instructions"`
 }
 type localBackend struct{ hub *hub.Hub }
@@ -119,7 +126,7 @@ func (b localBackend) changes(_ context.Context, input ChangesInput) (ChangesRec
 }
 func (b localBackend) activate(_ context.Context, id string) (SessionReceipt, error) {
 	snapshot, err := b.hub.ActivateSession(id)
-	return SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, err
+	return SessionReceipt{SessionID: snapshot.SessionID, UpdateMode: snapshot.UpdateMode, UpdatesFrom: snapshot.UpdatesFrom, ReportingInstructions: snapshot.UpdateMode.ReportingInstructions()}, err
 }
 func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	id := ""
@@ -128,20 +135,24 @@ func CheckIn(h *hub.Hub, limit int, agent string, session ...string) State {
 	}
 	s := h.SessionSnapshot(id)
 	if s.UpdateMode == telemetry.UpdatesDisabled {
-		return State{SessionID: s.SessionID, Repo: s.Repo, UpdateMode: s.UpdateMode, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
+		return State{SessionID: s.SessionID, Repo: s.Repo, UpdateMode: s.UpdateMode, UpdatesFrom: s.UpdatesFrom, ReportingInstructions: s.UpdateMode.ReportingInstructions(), Events: []StateEvent{}, PendingChanges: []telemetry.PendingChange{}}
 	}
-	if s.UpdateMode == telemetry.UpdatesMilestones {
-		visible := make([]telemetry.Event, 0, len(s.Events))
-		for _, event := range s.Events {
-			if event.Source == "agent" && event.ChangeID == "" {
-				visible = append(visible, event)
-			}
+	visible := make([]telemetry.Event, 0, len(s.Events))
+	from, _ := strconv.ParseUint(s.UpdatesFrom, 10, 64)
+	for _, event := range s.Events {
+		id, err := strconv.ParseUint(event.ID, 10, 64)
+		if err != nil || id < from || event.ContextID != "" {
+			continue
 		}
-		s.Events = visible
+		if s.UpdateMode == telemetry.UpdatesMilestones && (event.Source != "agent" || event.ChangeID != "") {
+			continue
+		}
+		visible = append(visible, event)
 	}
-	state := compact(s.Repo, s.Events, limit)
+	state := compact(s.Repo, visible, limit)
 	state.SessionID = s.SessionID
 	state.UpdateMode = s.UpdateMode
+	state.UpdatesFrom = s.UpdatesFrom
 	state.ReportingInstructions = s.UpdateMode.ReportingInstructions()
 	state.Feedback = h.OfferFeedback(agent, s.SessionID)
 	state.PendingChanges = []telemetry.PendingChange{}
@@ -169,7 +180,7 @@ func compact(repo string, events []telemetry.Event, limit int) State {
 }
 func newServer(b backend) *sdk.Server {
 	no := false
-	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: after EACH edit tool, get_state once with settle_ms=300 and explain every own pending change_id in one report_changes batch, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
+	server := sdk.NewServer(&sdk.Implementation{Name: "stef", Version: "0.3.0"}, &sdk.ServerOptions{Instructions: "stef is connected. At task start, get_state once and follow update_mode and reporting_instructions in receipts. milestones: use report_event only for major steps with a brief why; no per-file reporting. files: after EACH edit tool, get_state once with settle_ms=300 and explain every own pending change_id in one report_changes batch, including helpers, entry points, tests, docs, and cooperating agents' edits. A later revision needs its own reason; check pending changes once before finishing. updates_from is the inclusive first event ID of the current reporting window. Mode changes never request older saved-file explanations; omit pre-window IDs from automatic report_changes batches. disabled: stop reporting and extra checks for this turn; read the mode again on the next task. Mode changes reach a working agent at its next check-in, so never poll. Design choices render local evidence and do not increase reporting volume. Only when a developer explicitly requests more context, answer with report_event context_id matching their exact retained ID, node_name, and action; this is allowed in milestones but not disabled. Do not generate extra context automatically; do not combine context_id with change_id. Use 2–4 word labels and a short user-facing why (about 12 words). Only explain edits attributable to your task. Consider advisory developer notes at natural breaks. No second model calls or hidden reasoning. Trusted hooks select chat IDs; otherwise set_session once for a new/resumed chat and retain its ID across turns. Use parents only for actual relationships; other arrows show sequence."})
 	sdk.AddTool(server, &sdk.Tool{Name: "set_session", Description: "Select this chat's workflow once on new chat or resume. New IDs start empty; existing IDs restore saved steps."}, func(ctx context.Context, _ *sdk.CallToolRequest, input SessionInput) (*sdk.CallToolResult, SessionReceipt, error) {
 		if err := telemetry.Session(input.SessionID); err != nil {
 			return nil, SessionReceipt{}, err
@@ -178,7 +189,7 @@ func newServer(b backend) *sdk.Server {
 		return nil, result, err
 	})
 	sdk.AddTool(server, &sdk.Tool{Name: "report_event", Description: "Share a meaningful workflow step as work starts; briefly update its result.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, _ *sdk.CallToolRequest, input Input) (*sdk.CallToolResult, Receipt, error) {
-		event, err := telemetry.Normalize(telemetry.Event{SessionID: input.SessionID, AgentID: input.AgentID, ChangeID: input.ChangeID, NodeName: input.NodeName, Action: input.Action, Summary: input.Summary, Why: input.Why, Status: input.Status, Parents: input.Parents})
+		event, err := telemetry.Normalize(telemetry.Event{SessionID: input.SessionID, AgentID: input.AgentID, ChangeID: input.ChangeID, ContextID: input.ContextID, NodeName: input.NodeName, Action: input.Action, Summary: input.Summary, Why: input.Why, Status: input.Status, Parents: input.Parents})
 		if err != nil {
 			return nil, Receipt{}, err
 		}
@@ -186,7 +197,7 @@ func newServer(b backend) *sdk.Server {
 		if err != nil {
 			return nil, Receipt{}, err
 		}
-		return nil, Receipt{ID: stored.Event.ID, Accepted: stored.Accepted, UpdateMode: stored.UpdateMode, ReportingInstructions: stored.ReportingInstructions, Collisions: stored.Event.Collisions, Feedback: stored.Feedback, PendingChanges: stored.PendingChanges, PendingCount: stored.PendingCount}, nil
+		return nil, Receipt{ID: stored.Event.ID, Accepted: stored.Accepted, UpdateMode: stored.UpdateMode, UpdatesFrom: stored.UpdatesFrom, ReportingInstructions: stored.ReportingInstructions, Collisions: stored.Event.Collisions, Feedback: stored.Feedback, PendingChanges: stored.PendingChanges, PendingCount: stored.PendingCount}, nil
 	})
 	sdk.AddTool(server, &sdk.Tool{Name: "report_changes", Description: "Explain every file revision changed by an edit in one batch. Use exact change_id values from pending_changes; do not omit entry points, tests, or docs.", Annotations: &sdk.ToolAnnotations{DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, _ *sdk.CallToolRequest, input ChangesInput) (*sdk.CallToolResult, ChangesReceipt, error) {
 		result, err := b.changes(ctx, input)
@@ -248,7 +259,7 @@ func (b remoteBackend) publish(ctx context.Context, event telemetry.Event) (Publ
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 1000))
 		return Publication{}, fmt.Errorf("daemon rejected event: %s", message)
 	}
-	var output Publication
+	output := Publication{UpdatesFrom: "0"}
 	err = json.NewDecoder(response.Body).Decode(&output)
 	return output, err
 }
@@ -270,7 +281,7 @@ func (b remoteBackend) state(ctx context.Context, input StateInput) (State, erro
 	if response.StatusCode != http.StatusOK {
 		return State{}, fmt.Errorf("daemon returned HTTP %d", response.StatusCode)
 	}
-	var state State
+	state := State{UpdatesFrom: "0"}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 128*1024)).Decode(&state); err != nil {
 		return State{}, err
 	}
@@ -295,7 +306,7 @@ func (b remoteBackend) changes(ctx context.Context, input ChangesInput) (Changes
 		message, _ := io.ReadAll(io.LimitReader(response.Body, 1000))
 		return ChangesReceipt{}, fmt.Errorf("daemon rejected explanations: %s", message)
 	}
-	var receipt ChangesReceipt
+	receipt := ChangesReceipt{UpdatesFrom: "0"}
 	err = json.NewDecoder(io.LimitReader(response.Body, 128*1024)).Decode(&receipt)
 	return receipt, err
 }
@@ -314,7 +325,7 @@ func (b remoteBackend) activate(ctx context.Context, id string) (SessionReceipt,
 	if response.StatusCode != http.StatusOK {
 		return SessionReceipt{}, fmt.Errorf("could not select chat (HTTP %d)", response.StatusCode)
 	}
-	var result SessionReceipt
+	result := SessionReceipt{UpdatesFrom: "0"}
 	err = json.NewDecoder(io.LimitReader(response.Body, 1024)).Decode(&result)
 	return result, err
 }

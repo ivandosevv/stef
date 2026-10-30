@@ -23,6 +23,9 @@
 - [x] Automatic saved-file steps, exact revision explanations, and pending-change MCP batches
 - [x] Saved Updates modes for explained milestones, every file, or Disabled
 - [x] On-demand saved-revision Git-style diffs beside live AI explanations
+- [x] Minimal/Interactive local views and selected-change hunk/milestone visuals
+- [x] Future-only reporting windows without historical explanation backlogs
+- [x] Explicit selected-step AI context requests without automatic enrichment
 - [x] Durable chat histories, start/resume selection, and per-chat Clear
 - [ ] Verify idle chat switching signals inside each real agent host
 - [ ] Verify automatic tab opening through each agent host's browser-control tools

@@ -21,10 +21,10 @@ func (mode UpdateMode) Valid() bool {
 func (mode UpdateMode) ReportingInstructions() string {
 	switch mode {
 	case UpdatesMilestones:
-		return "Report only major milestones with a short why using report_event; no per-file explanations."
+		return "Report major milestones with a short why using report_event; no automatic per-file reasons. Answer explicitly requested context via report_event context_id."
 	case UpdatesDisabled:
 		return "Updates disabled. Stop reporting; check the mode once at the next turn or natural break."
 	default:
-		return "After each edit, get_state once with settle_ms=300; explain every own pending change_id in one report_changes batch."
+		return "After each edit, get_state once with settle_ms=300; explain every own pending change_id in one report_changes batch. Never backfill earlier reporting windows. Use context_id only for requested extra context."
 	}
 }

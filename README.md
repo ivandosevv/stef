@@ -6,7 +6,7 @@ change. Steps show only a compact label. Select one to reveal its brief reason
 and file; choose Show diff for that saved revision or Suggest to open the input.
 
 The interface keeps the stef name, the workflow, Clear, and small Updates and
-appearance controls. Selected file changes open a Git-style diff on demand with
+appearance controls, plus a Design choice. Selected file changes open a Git-style diff on demand with
 added/removed lines and the AI explanation. The workflow stays compact.
 
 Updates offers Major milestones with brief explanations, Every file with a
@@ -14,6 +14,16 @@ reason for each saved change, and Disabled to stop new recording and reporting.
 The Every file option notes that its explanations may use more agent tokens.
 The choice is saved for the project across chats/restarts and shared by its views.
 Existing history remains available; edits made while capture is off are not replayed.
+Each Updates change begins a new reporting window. Every file requests reasons
+only for new saves from that point. Earlier revisions remain behind Show saved
+history and never become an automatic explanation backlog after re-enabling.
+
+Design offers Minimal and Interactive. Minimal keeps the current quiet workflow.
+Interactive adds a selected-change panel with exact before/after hunks, navigation,
+and reported milestone actions, states, and paths. Switching design, clicking
+steps, or inspecting history makes no model call. Explain more alone queues an
+explicit request for fuller AI context, with a token warning, answered at the
+agent's next check-in. The answer updates the same step and preserves its diff.
 
 The appearance button beside Clear offers Dark, Light, Eye comfort, and System.
 Eye comfort uses a warm background and muted green accents. Your choice is
@@ -96,7 +106,7 @@ Before finishing, agents check for omitted explanations once. report_event still
 handles reads, tests, or plans. No second model is used; token cost is unmeasured.
 An agent must follow the reporting contract: filesystem monitoring cannot
 discover the author's reason or force an unconnected host to provide one.
-Major milestones requests only key steps with reasons and suppresses new file
+Major milestones requests only new key steps with reasons and suppresses new file
 capture. Disabled rejects new activity and returns no pending files or feedback
 to the model. Changes reach a working agent in its next natural MCP check-in;
 stef does not poll the model or interrupt its current generation.

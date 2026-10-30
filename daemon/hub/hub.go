@@ -19,12 +19,13 @@ const HistoryLimit = 5000
 const ClaimTTL = 30 * time.Second
 
 type Message struct {
-	Type       string               `json:"type"`
-	SessionID  string               `json:"session_id"`
-	Repo       string               `json:"repo,omitempty"`
-	UpdateMode telemetry.UpdateMode `json:"update_mode"`
-	Events     []telemetry.Event    `json:"events,omitempty"`
-	Event      *telemetry.Event     `json:"event,omitempty"`
+	Type        string               `json:"type"`
+	SessionID   string               `json:"session_id"`
+	Repo        string               `json:"repo,omitempty"`
+	UpdateMode  telemetry.UpdateMode `json:"update_mode"`
+	UpdatesFrom string               `json:"updates_from"`
+	Events      []telemetry.Event    `json:"events,omitempty"`
+	Event       *telemetry.Event     `json:"event,omitempty"`
 }
 
 type Hub struct {
@@ -39,6 +40,7 @@ type Hub struct {
 	journal      *os.File
 	offered      map[string]map[string]bool
 	updateMode   telemetry.UpdateMode
+	updatesFrom  uint64
 	captureEpoch uint64
 }
 
@@ -64,7 +66,10 @@ func New(repo, journalPath string) (*Hub, error) {
 					file.Close()
 					return nil, fmt.Errorf("invalid settings journal record")
 				}
-				h.updateMode = control.UpdateMode
+				if h.updateMode != control.UpdateMode {
+					h.updatesFrom = h.next + 1
+					h.updateMode = control.UpdateMode
+				}
 				offset += int64(len(raw) + 1)
 				continue
 			}
@@ -142,6 +147,9 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 	if err := h.validateChangeLocked(e); err != nil {
 		return e, err
 	}
+	if err := h.validateContextLocked(e); err != nil {
+		return e, err
+	}
 	now := time.Now().UTC()
 	e.ID = strconv.FormatUint(h.next+1, 10)
 	e.Timestamp = now.Format(time.RFC3339Nano)
@@ -149,7 +157,7 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 		e.Source = "agent"
 	}
 	// File observation is not an agent claim. Claims expire or are explicitly released.
-	if e.Source == "agent" {
+	if e.Source == "agent" && e.ContextID == "" {
 		for node, owners := range h.claims {
 			for agent, touched := range owners {
 				if now.Sub(touched) > ClaimTTL {
@@ -183,7 +191,7 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 	if err := h.persist(data); err != nil {
 		return e, err
 	}
-	if e.Source == "agent" {
+	if e.Source == "agent" && e.ContextID == "" {
 		file, _, _ := strings.Cut(e.NodeName, "#")
 		file = e.SessionID + "\n" + file
 		if e.Status == "ready" || e.Action == "deleted" {
@@ -195,14 +203,14 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 	h.next++
 	h.store(e)
 	if e.SessionID == h.active {
-		h.broadcast(Message{Type: "event", SessionID: h.active, UpdateMode: h.updateMode, Event: &e})
+		h.broadcast(Message{Type: "event", SessionID: h.active, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Event: &e})
 	}
 	return e, nil
 }
 
 func (h *Hub) Snapshot() Message { h.mu.Lock(); defer h.mu.Unlock(); return h.snapshot() }
 func (h *Hub) snapshot() Message {
-	return Message{Type: "snapshot", Repo: h.repo, SessionID: h.active, UpdateMode: h.updateMode, Events: append([]telemetry.Event{}, h.events...)}
+	return Message{Type: "snapshot", Repo: h.repo, SessionID: h.active, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Events: append([]telemetry.Event{}, h.events...)}
 }
 
 func (h *Hub) Subscribe() (<-chan Message, func()) {

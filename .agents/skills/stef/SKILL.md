@@ -51,9 +51,13 @@ setup adapters; do not claim verified support for another host.
 At the start of a task, get_state once and follow update_mode and the compact
 reporting_instructions returned in each receipt. The Updates control is shared
 by the project's views and persists across chats and engine restart.
+Updates changes start a new reporting window, identified by updates_from.
+Only new work enters automatic reporting. Do not request or backfill reasons
+for saved history when the user changes the mode or opens older steps.
 
 In milestones mode, report only major steps with brief reasons through
-report_event. Skip file explanations and per-edit check-ins.
+report_event. Use the real action, running/ready state, and reported parents
+to support its local visualization. Skip file explanations and per-edit check-ins.
 
 In files mode, every eligible saved text-file revision appears automatically. After each
 edit tool, call get_state once with settle_ms=300 to allow the watcher debounce,
@@ -74,6 +78,17 @@ edits made while capture is off are not replayed when it is re-enabled.
 Mode changes reach a working agent at its next check-in. Never poll to discover
 changes. Passive observation makes no model calls, and no second model is needed
 for the agent's short reasons. Avoid hidden reasoning.
+
+Minimal and Interactive are local presentation choices. Switching design,
+selecting a step, viewing saved history, and navigating diffs make no requests
+for extra AI output. Do not generate richer explanations merely because the
+user chose Interactive. Explain more queues an explicit developer question.
+When that question arrives in feedback, answer only its referenced retained
+step using report_event with context_id, matching the note's node and action,
+and a concise fuller user-facing why. This updates the original step without
+changing its recorded code. Explicit context can answer a historical step
+in files or milestones; disabled still stops reporting. Do not expand other
+steps or retry an old automatic batch.
 
 When the selected mode permits it, use report_event for reads, tests, or plans; change_id can attach a single reason
 to a saved revision. Consider advisory developer notes in receipts at natural

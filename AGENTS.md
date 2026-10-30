@@ -14,6 +14,8 @@ observer, lifecycle adapters, MCP contract, and IDE host separate. Passive file
 tracking and hook ingestion must make no model calls. Respect the root's Updates
 setting: milestones reports only major steps with reasons, files captures and
 explains each saved file revision, and disabled stops new recording/reporting.
+Updates changes begin a new recording window (updates_from); automatic
+explanations apply only to new saves, never to older retained pending files.
 Read the mode once at task start and honor mode changes in receipts. In files
 mode, after each edit tool while stef is connected, get_state
 once with settle_ms=300 and report_changes for every file changed by this task,
@@ -26,6 +28,12 @@ Keep the interface limited to the workflow, brief agent-supplied reasons,
 directed arrows, a compact suggestion field, per-chat Clear, and the requested
 small appearance picker (Dark, Light, Eye comfort, System), and compact Updates
 picker (Major milestones, Every file, Disabled).
+The Design picker offers Minimal or Interactive. Interactive renders the selected
+revision's before/after hunks or a milestone's action/state/reported paths locally.
+Design changes and history viewing make no model calls. Fuller context is requested
+only through an explicit Explain more click; answer the resulting feedback with
+report_event context_id for that retained step. Keep old history inspectable
+without automatically generating or re-requesting its explanations.
 Selected saved-file steps may open the requested Git-style diff with the exact
 captured revision and its agent explanation. Keep it on demand, retain whitespace
 and line numbers, and clearly identify truncated previews. Opening a diff must

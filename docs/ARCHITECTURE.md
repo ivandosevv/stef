@@ -77,6 +77,21 @@ all new activity and model feedback, retaining earlier history. The watcher
 advances its baseline without constructing suppressed diffs; epoch checks prevent
 queued saves crossing a mode boundary from reappearing after re-enable.
 MCP guidance follows mode changes at the next check-in without model polling.
+The updates_from field marks the inclusive first event ID in the current reporting
+window. Each actual mode change advances it to the next ID; no-op changes keep
+it. Journal recovery derives it from ordered settings controls and event IDs.
+Automatic pending lists and model activity exclude earlier windows, and stale
+report_changes batches are rejected atomically. Old history remains available
+for explicit inspection and clarification rather than automatic backfill.
+
+Design is a local view preference, independent of reporting. Minimal keeps inline
+reasons; Interactive shows the selected exact hunk's before/after panes or a
+milestone's reported action, state, and parent paths. All previews are computed
+locally from saved events. The view remembers the preference and suggestion draft
+without requesting agent output. Explain more alone submits a targeted feedback
+question. A report_event context_id reply validates the retained chat/node/action
+and attaches full context to the original step. It creates no new file revision,
+changes no diff or claims, and does not generate context for other steps.
 
 In files mode, MCP initialization requests a report_changes batch after each edit tool, covering
 every affected file. get_state exposes bounded unexplained IDs/paths separately
@@ -97,6 +112,7 @@ rationale show no invented reason. No hidden chain-of-thought is requested.
 - GET /ws streams active-chat snapshots and events.
 - GET /api/events optionally reads one session_id.
 - POST /api/events accepts a report, optionally linked by change_id.
+- Explicit context_id reports answer a developer question about one retained step.
 - POST /api/changes attaches a batch of exact per-file explanations.
 - POST /api/activity accepts supported lifecycle observations.
 - POST /api/sessions/activate selects/restores a chat.

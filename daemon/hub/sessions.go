@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ivandosevv/stef/daemon/telemetry"
@@ -112,7 +113,7 @@ func (h *Hub) ClearSession(id string) (Message, error) {
 		h.events = h.sessions[id]
 		h.broadcast(h.snapshot())
 	}
-	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, Events: []telemetry.Event{}}, nil
+	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Events: []telemetry.Event{}}, nil
 }
 
 func (h *Hub) SessionSnapshot(id string) Message {
@@ -121,5 +122,5 @@ func (h *Hub) SessionSnapshot(id string) Message {
 	if id == "" {
 		id = h.active
 	}
-	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, Events: append([]telemetry.Event{}, h.sessions[id]...)}
+	return Message{Type: "snapshot", Repo: h.repo, SessionID: id, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Events: append([]telemetry.Event{}, h.sessions[id]...)}
 }

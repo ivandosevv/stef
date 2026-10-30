@@ -23,6 +23,9 @@ export interface AgentEvent {
   parents?: string[];
   collisions?: string[];
   change_id?: string;
+  context_id?: string;
+  reference_id?: string;
+  explanation?: string;
   explanation_pending?: boolean;
 }
 
@@ -30,7 +33,7 @@ export type UpdateMode = 'milestones' | 'files' | 'disabled';
 export const isUpdateMode = (value: unknown): value is UpdateMode => ['milestones', 'files', 'disabled'].includes(value as string);
 
 export type StreamMessage =
-  | { type: 'snapshot'; repo: string; session_id?: string; events?: AgentEvent[]; update_mode?: UpdateMode }
+  | { type: 'snapshot'; repo: string; session_id?: string; events?: AgentEvent[]; update_mode?: UpdateMode; updates_from?: string }
   | { type: 'event'; session_id?: string; event: AgentEvent };
 
 export const HISTORY_LIMIT = 5000;
@@ -47,7 +50,12 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
   const steps: AgentEvent[] = [];
   const changes = new Map(events.filter(isFileChange).map(event => [event.id, event]));
   const explanations = new Map<string, AgentEvent>();
+  const contexts = new Map<string, AgentEvent>();
+  const retained = new Map(events.map(event => [event.id, event]));
   for (const event of events) {
+    const target = event.context_id ? retained.get(event.context_id) : undefined;
+    const visibleTarget = target && !target.change_id && !target.context_id && (isFileChange(target) || (target.source === 'agent' && !target.category) || (target.source === 'hook' && ['reading', 'editing', 'testing', 'failed'].includes(target.phase ?? '')));
+    if (visibleTarget && event.source === 'agent' && event.session_id === target.session_id && event.node_name === target.node_name && event.action === target.action) contexts.set(target.id, event);
     const change = event.change_id ? changes.get(event.change_id) : undefined;
     if (change && event.source === 'agent' && event.session_id === change.session_id && event.node_name === change.node_name && event.action === change.action) explanations.set(change.id, event);
   }
@@ -56,19 +64,23 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
     return words.slice(0, 24).join(' ') + (words.length > 24 ? '…' : '');
   };
   for (const event of events) {
-    if (event.source === 'human' || event.category === 'feedback' || event.change_id) continue;
+    if (event.source === 'human' || event.category === 'feedback' || event.change_id || event.context_id) continue;
     if (event.source === 'watcher') {
       if (!isFileChange(event)) continue;
-      const explanation = explanations.get(event.id);
-      steps.push({ ...event, change_id: event.id, summary: shortName(event.node_name) + ' · ' + (explanation?.summary ?? event.action), why: explanation ? brief(explanation.why) : '', parents: explanation?.parents ?? [], explanation_pending: !explanation });
+      const automatic = explanations.get(event.id);
+      const context = contexts.get(event.id);
+      const explanation = context && (!automatic || BigInt(context.id) > BigInt(automatic.id)) ? context : automatic;
+      steps.push({ ...event, change_id: event.id, reference_id: event.id, summary: shortName(event.node_name) + ' · ' + (automatic?.summary ?? event.action), why: explanation ? brief(explanation.why) : '', explanation: explanation?.why ?? '', parents: automatic?.parents ?? [], explanation_pending: !explanation });
       continue;
     }
     const hook = event.source === 'hook';
     if (hook && !['reading', 'editing', 'testing', 'failed'].includes(event.phase ?? '')) continue;
     if (hook && event.node_name === '@workflow' && event.phase !== 'testing' && event.phase !== 'failed') continue;
     const action = hook && event.phase === 'editing' ? 'modified' : hook && event.phase === 'reading' ? 'scouted' : hook && event.phase === 'testing' ? 'tested' : event.action;
-    const why = hook ? '' : brief(event.why);
-    const step: AgentEvent = { ...event, action, why };
+    const context = contexts.get(event.id);
+    const explanation = context?.why ?? (hook ? '' : event.why);
+    const why = explanation ? brief(explanation) : '';
+    const step: AgentEvent = { ...event, action, why, explanation, reference_id: event.id };
     const previous = steps.at(-1);
     const genericTest = previous && action === 'tested' && previous.action === 'tested' && ((hook && step.phase === 'testing' && step.node_name === '@workflow') || (previous.source === 'hook' && previous.phase === 'testing' && previous.node_name === '@workflow'));
     const sameNode = previous && (genericTest || previous.node_name === step.node_name || ((previous.source === 'hook' || hook) && previous.node_name.split('#')[0] === step.node_name.split('#')[0]));
@@ -77,6 +89,16 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
     } else steps.push(step);
   }
   return steps;
+}
+
+export function workflowWindows(events: AgentEvent[], mode: UpdateMode, updatesFrom = '0'): { current: AgentEvent[]; saved: AgentEvent[] } {
+  const boundary = /^\d+$/.test(updatesFrom) ? BigInt(updatesFrom) : 0n;
+  const isCurrent = (id: string) => /^\d+$/.test(id) && BigInt(id) >= boundary;
+  const oldIDs = new Set(events.filter(event => !isCurrent(event.id)).map(event => event.id));
+  const current = workflowSteps(events.filter(event => isCurrent(event.id)), mode);
+  // Late, explicitly requested context still updates its retained historical step.
+  const saved = workflowSteps(events.filter(event => oldIDs.has(event.id) || (event.context_id && oldIDs.has(event.context_id)) || (event.change_id && oldIDs.has(event.change_id))), 'files');
+  return { current, saved };
 }
 
 export function workflowEdges(steps: AgentEvent[]): { from: string; to: string; explicit: boolean }[] {

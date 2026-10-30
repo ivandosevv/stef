@@ -4,8 +4,8 @@
 
   let { mode, connected, onchange }: { mode: UpdateMode; connected: boolean; onchange: (mode: UpdateMode) => Promise<void> } = $props();
   const options = [
-    { value: 'milestones', label: 'Major milestones', detail: 'Brief explanations at key steps.' },
-    { value: 'files', label: 'Every file', detail: 'Per-file explanations may use more tokens.' },
+    { value: 'milestones', label: 'Major milestones', detail: 'New key steps only, with brief explanations.' },
+    { value: 'files', label: 'Every file', detail: 'New saves from now on. Per-file explanations may use more tokens.' },
     { value: 'disabled', label: 'Disabled', detail: 'Stop new updates. Keep saved history.' },
   ] as const;
   const label = $derived(mode === 'milestones' ? 'Milestones' : mode === 'disabled' ? 'Disabled' : 'Every file');

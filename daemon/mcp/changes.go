@@ -12,7 +12,7 @@ import (
 
 func Published(h *hub.Hub, stored telemetry.Event) Publication {
 	state := CheckIn(h, 1, stored.AgentID, stored.SessionID)
-	return Publication{Event: stored, Accepted: stored.ID != "", UpdateMode: state.UpdateMode, ReportingInstructions: state.ReportingInstructions, Feedback: state.Feedback, PendingChanges: state.PendingChanges, PendingCount: state.PendingCount}
+	return Publication{Event: stored, Accepted: stored.ID != "", UpdateMode: state.UpdateMode, UpdatesFrom: state.UpdatesFrom, ReportingInstructions: state.ReportingInstructions, Feedback: state.Feedback, PendingChanges: state.PendingChanges, PendingCount: state.PendingCount}
 }
 
 func ReportChanges(h *hub.Hub, input ChangesInput) (ChangesReceipt, error) {
@@ -21,7 +21,7 @@ func ReportChanges(h *hub.Hub, input ChangesInput) (ChangesReceipt, error) {
 		return ChangesReceipt{}, err
 	}
 	state := CheckIn(h, 1, input.AgentID, input.SessionID)
-	receipt := ChangesReceipt{Accepted: len(events) > 0, IDs: make([]string, len(events)), UpdateMode: state.UpdateMode, ReportingInstructions: state.ReportingInstructions, Feedback: state.Feedback, PendingChanges: state.PendingChanges, PendingCount: state.PendingCount}
+	receipt := ChangesReceipt{Accepted: len(events) > 0, IDs: make([]string, len(events)), UpdateMode: state.UpdateMode, UpdatesFrom: state.UpdatesFrom, ReportingInstructions: state.ReportingInstructions, Feedback: state.Feedback, PendingChanges: state.PendingChanges, PendingCount: state.PendingCount}
 	for i, event := range events {
 		receipt.IDs[i] = event.ID
 	}

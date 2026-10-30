@@ -79,9 +79,12 @@ func TestSettingsAPIValidatesAndUpdatesEveryLiveView(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&settings); err != nil || settings.UpdateMode != telemetry.UpdatesMilestones {
 		t.Fatalf("mode acknowledgement: %+v %v", settings, err)
 	}
+	if snapshot := h.Snapshot(); snapshot.UpdatesFrom != "1" {
+		t.Fatalf("HTTP mode change lost new reporting boundary: %+v", snapshot)
+	}
 	for _, view := range views {
 		var updated hub.Message
-		if err := view.ReadJSON(&updated); err != nil || updated.Type != "snapshot" || updated.UpdateMode != telemetry.UpdatesMilestones {
+		if err := view.ReadJSON(&updated); err != nil || updated.Type != "snapshot" || updated.UpdateMode != telemetry.UpdatesMilestones || updated.UpdatesFrom != "1" {
 			t.Fatalf("live view missed shared mode: %+v %v", updated, err)
 		}
 	}
@@ -165,7 +168,7 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			}
 			var selected bridge.SessionReceipt
 			call("set_session", bridge.SessionInput{SessionID: "mode-chat"}, &selected)
-			if selected.UpdateMode != telemetry.UpdatesFiles || selected.ReportingInstructions == "" {
+			if selected.UpdateMode != telemetry.UpdatesFiles || selected.ReportingInstructions == "" || selected.UpdatesFrom != "0" {
 				t.Fatalf("set_session did not return the current policy: %+v", selected)
 			}
 			observe := func(path string) telemetry.Event {
@@ -182,6 +185,7 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			if !explained.Accepted || explained.UpdateMode != telemetry.UpdatesFiles || explained.ReportingInstructions == "" {
 				t.Fatalf("file receipt lost policy: %+v", explained)
 			}
+			oldPending := observe("old-unexplained.ts")
 			note, _ := (telemetry.Feedback{Kind: "question", Text: "Check retries?", TargetAgent: "agent"}).Event()
 			if _, err := h.Publish(note); err != nil {
 				t.Fatal(err)
@@ -189,7 +193,7 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			mode(telemetry.UpdatesDisabled)
 			var state bridge.State
 			call("get_state", bridge.StateInput{AgentID: "agent"}, &state)
-			if state.UpdateMode != telemetry.UpdatesDisabled || state.ReportingInstructions == "" || len(state.Events) != 0 || len(state.Feedback) != 0 || state.PendingCount != 0 || len(state.PendingChanges) != 0 {
+			if state.UpdateMode != telemetry.UpdatesDisabled || state.ReportingInstructions == "" || state.UpdatesFrom != h.Snapshot().UpdatesFrom || len(state.Events) != 0 || len(state.Feedback) != 0 || state.PendingCount != 0 || len(state.PendingChanges) != 0 {
 				t.Fatalf("disabled check-in still asked for updates: %+v", state)
 			}
 			input := bridge.Input{AgentID: "agent", NodeName: "main.ts", Action: "modified", Summary: "Deliver the feature", Why: "Make the reporting preference apply across clients.", Status: "ready"}
@@ -214,6 +218,27 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			if !receipt.Accepted || receipt.UpdateMode != telemetry.UpdatesMilestones || receipt.PendingCount != 0 {
 				t.Fatalf("major implementation milestone rejected: %+v", receipt)
 			}
+			contextInput := input
+			contextInput.NodeName, contextInput.Action, contextInput.ContextID = first.NodeName, first.Action, first.ID
+			contextInput.Why = "The developer requested why this retained theme revision was made."
+			var contextReceipt bridge.Receipt
+			call("report_event", contextInput, &contextReceipt)
+			if !contextReceipt.Accepted || contextReceipt.UpdatesFrom != h.Snapshot().UpdatesFrom || contextReceipt.PendingCount != 0 {
+				t.Fatalf("requested retained context not forwarded: %+v", contextReceipt)
+			}
+			lastContext := h.Snapshot().Events
+			if lastContext[len(lastContext)-1].ContextID != first.ID {
+				t.Fatal("transport lost exact requested context ID")
+			}
+			contextInput.ContextID = contextReceipt.ID
+			invalid, err := session.CallTool(ctx, &sdk.CallToolParams{Name: "report_event", Arguments: contextInput})
+			if err != nil || !invalid.IsError {
+				t.Fatalf("context reply incorrectly accepted as another target: %+v %v", invalid, err)
+			}
+			call("get_state", bridge.StateInput{AgentID: "agent"}, &state)
+			if len(state.Events) != 1 {
+				t.Fatalf("manual context became automatic milestone activity: %+v", state)
+			}
 			input.ChangeID = first.ID
 			input.NodeName = "theme.ts"
 			call("report_event", input, &receipt)
@@ -230,8 +255,18 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			mode(telemetry.UpdatesFiles)
 			last := observe("main.ts")
 			call("get_state", bridge.StateInput{AgentID: "agent"}, &state)
-			if state.UpdateMode != telemetry.UpdatesFiles || state.PendingCount != 1 || len(state.PendingChanges) != 1 || state.PendingChanges[0].ChangeID != last.ID {
+			if state.UpdateMode != telemetry.UpdatesFiles || state.UpdatesFrom != last.ID || len(state.Events) != 1 || state.PendingCount != 1 || len(state.PendingChanges) != 1 || state.PendingChanges[0].ChangeID != last.ID {
 				t.Fatalf("re-enabling replayed suppressed changes or lost fresh coverage: %+v", state)
+			}
+			staleBatch, err := session.CallTool(ctx, &sdk.CallToolParams{Name: "report_changes", Arguments: bridge.ChangesInput{AgentID: "agent", Changes: []telemetry.ChangeExplanation{{ChangeID: oldPending.ID, Summary: "Late old-window explanation", Why: "This file predates the selected reporting window."}}}})
+			if err != nil || !staleBatch.IsError {
+				t.Fatalf("transport accepted automatic old-window backfill: %+v %v", staleBatch, err)
+			}
+			mode(telemetry.UpdatesDisabled)
+			contextInput.ContextID = first.ID
+			call("report_event", contextInput, &contextReceipt)
+			if contextReceipt.Accepted || contextReceipt.UpdatesFrom != h.Snapshot().UpdatesFrom {
+				t.Fatalf("disabled transport accepted requested context: %+v", contextReceipt)
 			}
 		})
 	}

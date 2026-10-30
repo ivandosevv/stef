@@ -25,6 +25,11 @@ func TestValidation(t *testing.T) {
 		{"zero change ID", func(e *telemetry.Event) { e.ChangeID = "0" }},
 		{"noncanonical change ID", func(e *telemetry.Event) { e.ChangeID = "01" }},
 		{"oversized change ID", func(e *telemetry.Event) { e.ChangeID = "99999999999999999999" }},
+		{"invalid context ID", func(e *telemetry.Event) { e.ContextID = "file" }},
+		{"zero context ID", func(e *telemetry.Event) { e.ContextID = "0" }},
+		{"noncanonical context ID", func(e *telemetry.Event) { e.ContextID = "01" }},
+		{"oversized context ID", func(e *telemetry.Event) { e.ContextID = "99999999999999999999" }},
+		{"combined explanation IDs", func(e *telemetry.Event) { e.ChangeID = "1"; e.ContextID = "2" }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

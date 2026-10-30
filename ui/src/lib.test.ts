@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { activeCollisions, activityEdges, eventsAt, latestNodes, mergeEvents, workflowAgents, workflowSteps, workflowEdges, type AgentEvent } from './lib';
+import { activeCollisions, activityEdges, eventsAt, latestNodes, mergeEvents, workflowAgents, workflowSteps, workflowWindows, workflowEdges, type AgentEvent } from './lib';
 
 function event(id: number, node = 'main.go', options: Partial<AgentEvent> = {}): AgentEvent {
   return { id: String(id), timestamp: new Date(100000 + id * 1000).toISOString(), agent_id: 'alpha', node_name: node, action: 'modified', summary: 'Updated the request boundary', why: 'Requests need a clear boundary.', status: 'running', source: 'agent', ...options };
@@ -95,6 +95,47 @@ describe('simple workflow', () => {
 });
 
 describe('session timeline', () => {
+  it('separates saved history from newly enabled file reporting', () => {
+    const events = [event(1, 'old.ts', { source: 'watcher', kind: 'file' }), event(2, '@workflow'), event(3, 'new.ts', { source: 'watcher', kind: 'file' })];
+    expect(workflowWindows(events, 'files', '3').current.map(step => step.id)).toEqual(['3']);
+    expect(workflowWindows(events, 'files', '3').saved.map(step => step.id)).toEqual(['1', '2']);
+    expect(workflowWindows(events, 'files').current).toHaveLength(3);
+    expect(workflowWindows(events, 'disabled', '3').current).toEqual([]);
+  });
+  it('does not coalesce a new milestone into a step from an earlier window', () => {
+    const windows = workflowWindows([event(1), event(2, 'main.go', { why: 'Now verify the new behavior.' })], 'milestones', '2');
+    expect(windows.current[0]).toMatchObject({ id: '2', why: 'Now verify the new behavior.' });
+    expect(windows.saved[0].id).toBe('1');
+  });
+  it('updates requested context on the exact historical revision without creating a current step', () => {
+    const diff = '@@ -1 +1 @@\n-old\n+new\n';
+    const explanation = 'Explain the existing choice with enough context for the developer to follow the actual behavior while leaving the original saved code revision intact across future edits and reloads.';
+    const windows = workflowWindows([
+      event(1, 'main.ts', { source: 'watcher', kind: 'file', diff }),
+      event(2, 'main.ts', { change_id: '1', why: 'Use the shared default.' }),
+      event(4, 'main.ts', { context_id: '1', why: explanation }),
+    ], 'milestones', '3');
+    expect(windows.current).toEqual([]);
+    expect(windows.saved).toHaveLength(1);
+    expect(windows.saved[0]).toMatchObject({ id: '1', explanation, diff, reference_id: '1' });
+    expect(windows.saved[0].why.endsWith('…')).toBe(true);
+  });
+  it('uses the latest real milestone as the reference while preserving selection across updates', () => {
+    const steps = workflowSteps([event(1), event(2), event(3, 'main.go', { context_id: '2', why: 'A requested explanation of the finished step.' })]);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({ id: '1', reference_id: '2', explanation: 'A requested explanation of the finished step.' });
+  });
+  it('rejects context from another chat, action, path, or non-workflow target', () => {
+    const steps = workflowSteps([
+      event(1, 'a.ts', { source: 'watcher', kind: 'file', session_id: 'a' }),
+      event(2, 'b.ts', { context_id: '1', session_id: 'a' }),
+      event(3, 'a.ts', { context_id: '1', session_id: 'b' }),
+      event(4, 'a.ts', { context_id: '1', session_id: 'a', action: 'tested' }),
+      event(5, '@workflow', { source: 'human', category: 'feedback' }),
+      event(6, '@workflow', { context_id: '5' }),
+    ]);
+    expect(steps).toHaveLength(1); expect(steps[0].why).toBe('');
+  });
   it('deduplicates reconnect deliveries and preserves chronological event order', () => {
     const current = [event(1), event(2)];
     expect(mergeEvents(current, [event(2), event(4), event(3)]).map((e) => e.id)).toEqual(['1', '2', '3', '4']);

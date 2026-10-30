@@ -41,7 +41,12 @@ func (h *Hub) validateChangeLocked(e telemetry.Event) error {
 	return nil
 }
 
-// PendingChanges returns oldest unexplained retained revisions without returning code.
+func (h *Hub) currentEventLocked(id string) bool {
+	n, err := strconv.ParseUint(id, 10, 64)
+	return err == nil && n >= h.updatesFrom
+}
+
+// PendingChanges returns unexplained revisions from the current reporting window, without code.
 func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChange, int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -56,14 +61,19 @@ func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChan
 	}
 	explained := make(map[string]bool)
 	for _, event := range h.sessions[session] {
-		if event.Source == "agent" && event.ChangeID != "" {
-			explained[event.ChangeID] = true
+		if event.Source == "agent" {
+			if event.ChangeID != "" {
+				explained[event.ChangeID] = true
+			}
+			if event.ContextID != "" {
+				explained[event.ContextID] = true
+			}
 		}
 	}
 	changes := make([]telemetry.PendingChange, 0)
 	count := 0
 	for _, event := range h.sessions[session] {
-		if !isFileChange(event) || explained[event.ID] {
+		if !isFileChange(event) || explained[event.ID] || !h.currentEventLocked(event.ID) {
 			continue
 		}
 		count++
@@ -106,6 +116,9 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 		if err != nil {
 			return nil, err
 		}
+		if !h.currentEventLocked(target.ID) {
+			return nil, fmt.Errorf("change_id %q predates the current reporting window; omit it from automatic batches, or use report_event only for a developer-requested clarification", change.ChangeID)
+		}
 		event, err := telemetry.Normalize(telemetry.Event{SessionID: session, AgentID: agent, ChangeID: change.ChangeID, NodeName: target.NodeName, Action: target.Action, Summary: change.Summary, Why: change.Why, Parents: change.Parents, Status: "ready", Source: "agent"})
 		if err != nil {
 			return nil, err
@@ -130,7 +143,7 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 		h.store(event)
 		delete(h.claims[session+"\n"+event.NodeName], event.AgentID)
 		if session == h.active {
-			h.broadcast(Message{Type: "event", SessionID: session, UpdateMode: h.updateMode, Event: &event})
+			h.broadcast(Message{Type: "event", SessionID: session, UpdateMode: h.updateMode, UpdatesFrom: strconv.FormatUint(h.updatesFrom, 10), Event: &event})
 		}
 	}
 	return events, nil

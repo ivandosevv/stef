@@ -33,6 +33,24 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); out
 header { height: 46px; margin: 0 20px; display: flex; align-items: center; justify-content: space-between; }
 .brand { font-size: 18px; font-weight: 500; letter-spacing: -.4px; }
 .header-actions { position: relative; display: flex; align-items: center; gap: 8px; }
+.design { position: static; }
+.design-trigger { border: 0; background: none; color: var(--control); padding: 5px; height: 28px; width: 28px; border-radius: 5px; font-size: 16px; }
+.design-trigger:hover { color: var(--text); }
+.design-menu { position: absolute; z-index: 4; right: 0; top: calc(100% + 5px); width: min(244px, calc(100vw - 40px)); padding: 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); box-shadow: 0 4px 16px #00000016; }
+.design-option { display: block; width: 100%; padding: 9px 8px; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; text-align: left; }
+.design-option > span { display: flex; justify-content: space-between; color: var(--text); }
+.design-option small, .design-cost { display: block; margin-top: 4px; font-size: 10px; line-height: 1.5; }
+.design-option:hover, .design-option:focus-visible { background: var(--hover); }
+.design-cost { color: var(--faint); padding: 4px 8px 6px; }
+.history-control { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 6px 20px; }
+.history-control button { border: 0; background: none; color: var(--control); font-size: 10px; padding: 5px 0; }
+.history-control small { color: var(--faint); font-size: 10px; }
+.workflow-layout.interactive { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); align-items: start; padding: 6px 20px 24px; gap: 20px; }
+.interactive-detail { min-width: 0; position: sticky; top: 12px; padding-top: 22px; }
+.visual-empty { min-height: 200px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 8px; }
+.visual-empty > span { font-size: 26px; color: var(--edge); }
+@media (max-width: 700px) { .workflow-layout.interactive { grid-template-columns: minmax(0, 1fr); padding: 0 12px 24px; gap: 0; } .interactive-detail { position: static; padding: 0; } .workflow-layout.interactive .workflow-canvas { max-height: 300px; overflow-y: auto; } }
+@media (max-width: 300px) { header { margin: 0 12px; } .header-actions { gap: 3px; } }
 .updates { position: static; }
 .updates-trigger { display: flex; align-items: center; gap: 5px; border: 0; background: none; color: var(--control); border-radius: 5px; padding: 6px; font-size: 10px; }
 .updates-trigger:hover { color: var(--text); }
