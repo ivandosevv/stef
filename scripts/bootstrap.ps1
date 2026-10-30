@@ -59,6 +59,18 @@ function Assert-StefAsset($Asset, [string]$Tag) {
     return $uri.AbsoluteUri
 }
 
+function Get-StefFileHash([string]$Path) {
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($stream) { $stream.Dispose() }
+        $sha256.Dispose()
+    }
+}
+
 function Assert-RuntimePaths([string]$Project) {
     foreach ($relative in @('.stef', '.stef/runtime', '.stef/runtime/bin')) {
         $path = Join-Path $Project $relative
@@ -184,7 +196,7 @@ try {
     try {
         $archivePath = Join-Path $stage 'release.zip'
         [IO.File]::WriteAllBytes($archivePath, (Get-StefResource (Assert-StefAsset $archiveAsset[0] $releaseDocument.tag_name) 104857600))
-        if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash -ne $expectedHash) { throw 'Release checksum mismatch. Your existing stef was preserved.' }
+        if ((Get-StefFileHash $archivePath) -ne $expectedHash) { throw 'Release checksum mismatch. Your existing stef was preserved.' }
         $extracted = Join-Path $stage 'files'
         [IO.Directory]::CreateDirectory($extracted) | Out-Null
         Expand-StefArchive $archivePath $extracted
@@ -196,7 +208,7 @@ try {
         $binary = Join-Path $binDirectory 'stef.exe'
         if (Test-Path -LiteralPath $binary) {
             if ((Get-Item -LiteralPath $binary -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'The existing stef binary cannot be a link.' }
-            if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $compiled -Algorithm SHA256).Hash) {
+            if ((Get-StefFileHash $binary) -ne (Get-StefFileHash $compiled)) {
                 try { [IO.File]::Replace($compiled, $binary, $null) } catch { throw 'Close running stef processes before updating, then reconnect its MCP. Your existing binary was preserved.' }
             }
         } else { [IO.File]::Move($compiled, $binary) }
