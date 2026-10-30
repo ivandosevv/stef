@@ -1,0 +1,8 @@
+{
+  "agent_id": "claude-main",
+  "node_name": "main.go#Greeting",
+  "action": "modified",
+  "summary": "Made the greeting type explicit",
+  "why": "A small type gives the greeting a clear boundary as the example grows.",
+  "status": "ready"
+}

@@ -1,0 +1,58 @@
+# stef personal project
+
+This is Ivan's personal open-source project. Keep all project files, build output,
+test fixtures, and development work inside this repository. Do not read, modify,
+connect to, or reuse code from SAPDevelop, Hyperspace, or other SAP projects.
+
+The intended stack is Go (daemon), the official MCP Go SDK (stdio bridge), and
+Svelte 5 / TypeScript / Vite / Tailwind (HUD). Runtime operation stays local.
+
+The product name is stef. In VS Code, use its existing integrated browser editor
+beside the agent; a native companion remains available for terminal and other
+hosts. IDE plugins are optional experiments, not a required installation. Keep the
+observer, lifecycle adapters, MCP contract, and IDE host separate. Passive file
+tracking and hook ingestion must make no model calls. Respect the root's Updates
+setting: milestones reports only major steps with reasons, files captures and
+explains each saved file revision, and disabled stops new recording/reporting.
+Read the mode once at task start and honor mode changes in receipts. In files
+mode, after each edit tool while stef is connected, get_state
+once with settle_ms=300 and report_changes for every file changed by this task,
+using exact observation IDs and brief user-facing reasons. Include helpers, entry
+points, tests, docs, configuration, and cooperating agents' edits. Check pending
+changes once before finishing; leave unknown authors' intent unexplained.
+Never claim that MCP exposes every client's private workflow.
+Only mark individual agent/editor integrations supported after actual verification.
+Keep the interface limited to the workflow, brief agent-supplied reasons,
+directed arrows, a compact suggestion field, per-chat Clear, and the requested
+small appearance picker (Dark, Light, Eye comfort, System), and compact Updates
+picker (Major milestones, Every file, Disabled).
+Selected saved-file steps may open the requested Git-style diff with the exact
+captured revision and its agent explanation. Keep it on demand, retain whitespace
+and line numbers, and clearly identify truncated previews. Opening a diff must
+make no model call and must not substitute the current file for historical data.
+Keep closed steps to a file and short label; reveal the reason on selection and the
+suggestion input on demand.
+New chats start empty; resumed chat IDs restore their own saved workflow. Do not
+reintroduce dashboards, replay bars, metrics, or code inspectors unless
+the user asks. Distinguish chat identity signals from MCP transport connections;
+never claim to detect a chat switch the host has not reported.
+
+Default development and testing must watch examples/sandbox or an isolated
+directory under .test-workspace. Use another repository only when explicitly
+requested. Go unit tests may use standard temporary directories with automatic
+cleanup. Do not install MCP configuration into other projects automatically.
+
+Run make check and make test for functional changes. Run make build followed by
+cd ui && npm run test:e2e when changing the daemon-to-browser path. Preserve the
+distinction between observed filesystem changes and agent-provided rationale.
+
+README.md describes the working version. docs/ROADMAP.md tracks future scope.
+Keep both accurate; do not describe planned functionality as implemented.
+
+Ivan requested regular progress checkpoints to
+https://github.com/ivandosevv/stef. After completing and verifying a meaningful
+milestone, commit the project source and push to the existing master branch.
+Preserve remote history, use clear commit messages, and never force-push. Inspect
+the staged files first; keep credentials, local client configuration, runtime
+history, test artifacts, caches, and generated output out of commits. This
+authorization applies to stef only, not other repositories or publication tasks.

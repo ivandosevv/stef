@@ -1,0 +1,1 @@
+Run make build to embed the stef UI.

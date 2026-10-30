@@ -1,0 +1,155 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/ivandosevv/stef/daemon/hub"
+	bridge "github.com/ivandosevv/stef/daemon/mcp"
+	"github.com/ivandosevv/stef/daemon/telemetry"
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func TestPerChangeCoverageOverMCP(t *testing.T) {
+	for _, transport := range []string{"forwarding", "streamable-http", "stdio"} {
+		t.Run(transport, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			h, err := hub.New(root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer h.Close()
+			server := httptest.NewServer(handler(h, t.TempDir(), "4820"))
+			defer server.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			var connection sdk.Transport
+			switch transport {
+			case "streamable-http":
+				connection = &sdk.StreamableClientTransport{Endpoint: server.URL + "/mcp"}
+			case "stdio":
+				executable, err := filepath.Abs("../bin/stef")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Stat(executable); err != nil {
+					t.Skip("make test builds the executable first")
+				}
+				command := exec.Command(executable, "--mcp", "--no-autostart", "--repo", root, "--daemon", server.URL)
+				command.Stderr = os.Stderr
+				connection = &sdk.CommandTransport{Command: command}
+			default:
+				mcpServer, err := bridge.NewServer(server.URL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				peer, local := sdk.NewInMemoryTransports()
+				serverSession, err := mcpServer.Connect(ctx, peer, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer serverSession.Close()
+				connection = local
+			}
+			client := sdk.NewClient(&sdk.Implementation{Name: "change-test", Version: "1"}, nil)
+			session, err := client.Connect(ctx, connection, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			call := func(tool string, input, output any) {
+				t.Helper()
+				result, err := session.CallTool(ctx, &sdk.CallToolParams{Name: tool, Arguments: input})
+				if err != nil || result.IsError {
+					t.Fatalf("%s failed: %+v %v", tool, result, err)
+				}
+				raw, _ := json.Marshal(result.StructuredContent)
+				if err := json.Unmarshal(raw, output); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var selected bridge.SessionReceipt
+			call("set_session", bridge.SessionInput{SessionID: "changes-chat"}, &selected)
+			observe := func(node string) telemetry.Event {
+				t.Helper()
+				event, err := h.Publish(telemetry.Event{AgentID: "filesystem", NodeName: node, Action: "modified", Summary: "File modified", Why: "A file save was observed.", Source: "watcher", Kind: "file"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return event
+			}
+			first := observe("theme.ts")
+			second := observe("main.ts")
+			var milestone bridge.Receipt
+			call("report_event", bridge.Input{AgentID: "agent", NodeName: "main.ts", Action: "modified", Summary: "Apply appearance", Why: "Restore the saved appearance on startup.", Status: "ready"}, &milestone)
+			if milestone.PendingCount != 2 || len(milestone.PendingChanges) != 2 {
+				t.Fatalf("receipt hid pending files: %+v", milestone)
+			}
+			var state bridge.State
+			call("get_state", bridge.StateInput{Limit: 1, SettleMS: 1}, &state)
+			if len(state.Events) != 1 || state.PendingCount != 2 {
+				t.Fatalf("state truncated pending revisions: %+v", state)
+			}
+			var receipt bridge.ChangesReceipt
+			call("report_changes", bridge.ChangesInput{AgentID: "agent", Changes: []telemetry.ChangeExplanation{
+				{ChangeID: first.ID, Summary: "Save theme preference", Why: "Keep preference logic separate from rendering."},
+				{ChangeID: second.ID, Summary: "Restore before mounting", Why: "Apply the saved choice before rendering.", Parents: []string{"theme.ts"}},
+			}}, &receipt)
+			if !receipt.Accepted || len(receipt.IDs) != 2 || receipt.PendingCount != 0 {
+				t.Fatalf("batch receipt missing exact coverage: %+v", receipt)
+			}
+			last := h.Snapshot().Events
+			if last[len(last)-1].ChangeID != second.ID || last[len(last)-2].ChangeID != first.ID {
+				t.Fatal("batch lost exact links")
+			}
+			third := observe("main.ts")
+			call("get_state", bridge.StateInput{Limit: 1}, &state)
+			if state.PendingCount != 1 || state.PendingChanges[0].ChangeID != third.ID {
+				t.Fatal("later save inherited an old explanation")
+			}
+		})
+	}
+}
+
+func TestHTTPChangeBatchRejectsInvalidInputsBeforeEffects(t *testing.T) {
+	h, server := setup(t)
+	file, err := h.Publish(telemetry.Event{AgentID: "filesystem", NodeName: "theme.ts", Action: "created", Summary: "File created", Why: "A file save was observed.", Source: "watcher", Kind: "file"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := bridge.ChangesInput{AgentID: "agent", Changes: []telemetry.ChangeExplanation{{ChangeID: file.ID, Summary: "Keep theme logic", Why: "Share theme preferences between startup and controls."}, {ChangeID: "999", Summary: "Other file", Why: "Invalid observation."}}}
+	raw, _ := json.Marshal(input)
+	response, err := http.Post(server.URL+"/api/changes", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != 400 || len(h.Snapshot().Events) != 1 {
+		t.Fatal("invalid HTTP batch had partial effects")
+	}
+	input.Changes = input.Changes[:1]
+	raw, _ = json.Marshal(input)
+	response, err = http.Post(server.URL+"/api/changes", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var receipt bridge.ChangesReceipt
+	if err := json.NewDecoder(response.Body).Decode(&receipt); err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 201 || receipt.PendingCount != 0 {
+		t.Fatalf("valid HTTP batch failed: %d %+v", response.StatusCode, receipt)
+	}
+}

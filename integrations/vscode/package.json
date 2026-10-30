@@ -1,0 +1,112 @@
+{
+  "name": "stef",
+  "displayName": "stef",
+  "description": "Watch coding workflows inside your IDE. Local file tracking, lifecycle signals, and optional MCP decisions.",
+  "version": "0.2.0",
+  "publisher": "ivandosevv",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p . && esbuild src/extension.ts --bundle --platform=node --external:vscode --format=cjs --outfile=out/extension.js",
+    "test": "node --test test/*.test.cjs",
+    "test:ide": "node test/run.cjs",
+    "package": "vsce package --no-dependencies --allow-missing-repository --target darwin-arm64 --out ../../artifacts/stef-0.2.0-darwin-arm64.vsix"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.5.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~5.9.3"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "stef.start",
+        "title": "stef: Start Tracking Workspace"
+      },
+      {
+        "command": "stef.stop",
+        "title": "stef: Stop Tracking"
+      },
+      {
+        "command": "stef.openBeside",
+        "title": "stef: Open Workflow Beside Editor"
+      },
+      {
+        "command": "stef.showConfig",
+        "title": "stef: Show MCP Configuration"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stef",
+          "title": "stef",
+          "icon": "media/stef.svg"
+        }
+      ]
+    },
+    "views": {
+      "stef": [
+        {
+          "id": "stef.workflow",
+          "name": "Workflow",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "stef",
+      "properties": {
+        "stef.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start local tracking in a trusted workspace on startup."
+        },
+        "stef.endpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:4820",
+          "description": "Local engine origin. A different project needs its own port."
+        },
+        "stef.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute stefd path. Defaults to the packaged platform binary."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "stef.start",
+          "when": "view == stef.workflow",
+          "group": "navigation"
+        },
+        {
+          "command": "stef.openBeside",
+          "when": "view == stef.workflow",
+          "group": "navigation"
+        }
+      ]
+    }
+  }
+}

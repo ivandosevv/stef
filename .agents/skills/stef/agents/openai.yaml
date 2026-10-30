@@ -1,0 +1,4 @@
+interface:
+  display_name: "stef"
+  short_description: "Enable the live coding workflow companion"
+  default_prompt: "Use $stef to enable the companion for this personal project."

@@ -1,0 +1,33 @@
+name: Check stef
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: make install
+      - run: make check
+      - run: make test
+      - run: make build
+      - run: npx playwright install --with-deps chromium
+        working-directory: ui
+      - run: npm run test:e2e
+        working-directory: ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-artifacts
+          path: |
+            artifacts/
+            ui/test-results/
+          retention-days: 7

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "stef": {
+      "command": "/absolute/path/to/stef/bin/stef",
+      "args": [
+        "--mcp",
+        "--repo",
+        "/absolute/path/to/your/personal/project"
+      ]
+    }
+  }
+}

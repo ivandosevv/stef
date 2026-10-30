@@ -1,0 +1,9 @@
+src/**
+test/**
+tsconfig.json
+package-lock.json
+.vscodeignore
+out/engine.js
+out/security.js
+node_modules/**
+!node_modules/ws/**

@@ -1,0 +1,6 @@
+{
+  "agent_id": "your-agent",
+  "phase": "testing",
+  "node_name": "main.go",
+  "tool": "test-runner"
+}

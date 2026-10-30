@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/stef/bin/stef --hook --client claude --daemon http://127.0.0.1:4820",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

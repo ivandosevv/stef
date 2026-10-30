@@ -1,0 +1,1 @@
+:root[data-theme="hacker"] { --bg: #101719; --surface: #162023; --surface-2: #1b282b; --canvas: #111b1e; --text: #e8eee8; --muted: #859695; --faint: #5d7575; --border: #2c3a3b; --accent: #b6ee8d; --accent-soft: #b6ee8d12; --accent-border: #b6ee8d45; --edge: #648c79; --grid: #9dcaab19; --warning: #eac47f; --danger: #ef9c92; --radius: 12px; --node-radius: 9px; color-scheme: dark; }
