@@ -19,11 +19,14 @@ only for new saves from that point. Earlier revisions remain behind Show saved
 history and never become an automatic explanation backlog after re-enabling.
 
 Design offers Minimal and Interactive. Minimal keeps the current quiet workflow.
-Interactive adds a selected-change panel with exact before/after hunks, navigation,
+Interactive adds a selected-change panel with wrapped Git-style diff hunks, navigation,
 and reported milestone actions, states, and paths. Switching design, clicking
 steps, or inspecting history makes no model call. Explain more alone queues an
 explicit request for fuller AI context, with a token warning, answered at the
 agent's next check-in. The answer updates the same step and preserves its diff.
+New live changes select and reveal the latest step automatically in either design.
+An open diff or unfinished suggestion holds that position until you close it or
+finish the draft; chat reloads restore your selection. Following is entirely local.
 An unexplained save offers Request explanation in either design. It queues one
 question for that exact revision; clicking or viewing a step never requests AI
 output by itself. A normal per-file reply also resolves the queued request.

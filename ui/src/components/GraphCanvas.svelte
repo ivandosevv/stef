@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
   import { workflowEdges, type AgentEvent } from '../lib';
-  let { steps, selected, onselect, connected, detail, detailHeight = 144 }: {
+  let { steps, selected, reveal = null, onselect, connected, detail, detailHeight = 144 }: {
     steps: AgentEvent[]; selected: string | null; onselect: (id: string) => void;
+    reveal?: { id: string; version: number } | null;
     connected: boolean; detail: Snippet<[AgentEvent]>; detailHeight?: number;
   } = $props();
   let viewport: HTMLDivElement;
@@ -20,6 +21,17 @@
   });
   const height = $derived(steps.length ? positions.get(steps[steps.length - 1].id)!.y + positions.get(steps[steps.length - 1].id)!.height + 24 : 220);
   const edges = $derived(workflowEdges(steps));
+  $effect(() => {
+    const target = reveal;
+    if (!target) return;
+    let active = true;
+    void tick().then(() => {
+      if (!active || selected !== target.id) return;
+      const node = viewport?.querySelector<SVGForeignObjectElement>('[data-step-id="' + target.id + '"]');
+      node?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+    return () => { active = false; };
+  });
   function arrow(from: string, to: string): string {
     const a = positions.get(from)!; const b = positions.get(to)!;
     const x = a.x + nodeWidth / 2;
@@ -41,7 +53,7 @@
       {/each}
       {#each steps as step (step.id)}
         {@const position = positions.get(step.id)!}
-        <foreignObject x={position.x} y={position.y} width={nodeWidth} height={position.height}>
+        <foreignObject x={position.x} y={position.y} width={nodeWidth} height={position.height} data-step-id={step.id}>
           <button class="step" class:selected={selected === step.id} onclick={() => onselect(step.id)} title={step.node_name + (step.why ? ' — ' + step.why : step.explanation_pending ? ' — Waiting for the agent’s explanation.' : '')} data-testid="workflow-step" data-change-id={step.change_id} data-explanation-pending={step.explanation_pending} aria-pressed={selected === step.id}>
             {step.summary}
           </button>

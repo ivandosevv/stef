@@ -26,6 +26,22 @@ export function diffLines(diff: string): DiffLine[] {
   });
 }
 
+// Keep the parsed rows in their saved order, including each hunk's range and EOF markers.
+export function diffHunks(diff: string): DiffLine[][] {
+  const hunks: DiffLine[][] = [];
+  let current: DiffLine[] | undefined;
+  const truncated = isTruncatedDiff(diff);
+  const rows = diffLines(diff);
+  for (const [index, row] of rows.entries()) {
+    if (row.kind === 'hunk') {
+      current = [];
+      hunks.push(current);
+    }
+    if (current && !(truncated && index === rows.length - 1)) current.push(row);
+  }
+  return hunks;
+}
+
 export function hasFileDiff(step: AgentEvent): boolean {
   return isFileChange(step);
 }

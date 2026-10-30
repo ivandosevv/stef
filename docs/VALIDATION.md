@@ -461,3 +461,38 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   prescribed path-filtered endpoint recovers every omitted own revision; all
   30 edited files receive exact reasons and all 60 unrelated saves stay pending.
   Recovery queries make progress through accepted batches rather than polling.
+
+## Latest-step following and wrapped Interactive diffs
+
+- New live steps and revised coalesced milestones select and reveal the latest
+  node in Minimal and Interactive, with reduced-motion support and room for the
+  sticky header. Selection and scrolling make no model call or keyboard-focus
+  move. Late historical explanations update their own step without stealing it.
+- An open historical diff, focused suggestion input, or nonempty draft defers
+  following until inspection ends; only the newest waiting change is followed.
+  Close restores keyboard focus even when the original button was replaced.
+  Escape cancels a draft and follows the waiting step. Chat reload/reconnect,
+  shared Clear, Updates boundaries, and hiding saved history preserve a usable
+  selection and do not leave hidden drafts blocking current work.
+- Interactive and Show diff share Git-style rows with exact source, old/new
+  line numbers, addition/removal prefixes, hunk ranges, and EOF markers.
+  Interactive wraps long lines in one column without horizontal overflow at
+  360px and 860px. Each new file/hunk starts at the top; a reason update for the
+  same file keeps the preview position. Multi-hunk navigation, empty-file and
+  truncated-preview notices, and explicit explanation requests remain available.
+- make check and make test pass: Go vet, backend race tests, the greeting cases,
+  36 UI tests, and zero Svelte/TypeScript errors or warnings. All 25 browser
+  scenarios pass, including rapid-save bursts, reconnect, both-design deferred
+  inspection/drafts, Updates/history draft boundaries, and exact wrapped source.
+  Light and Eye comfort screenshots were visually inspected. Local presentation
+  paths queue no feedback or AI requests. Existing native webview compiler
+  deprecation warnings remain unchanged.
+- The verified personal engine was reloaded headlessly on 4825 and retained the
+  existing chat, Every file mode, reporting window, and all 161 saved events.
+  This does not certify client hook loading or automatic IDE tab refresh.
+- A live browser watched the actual ARCHITECTURE.md revision 1186, selected and
+  scrolled to it automatically, and received its exact reason in 0.329 seconds.
+  Interactive and Show diff retained identical source; desktop and 360px layouts
+  wrapped it without horizontal overflow. Reload kept the selection and reason.
+  There were zero browser API mutations or JavaScript errors. Live screenshots
+  were visually inspected; artifacts/follow-diff-live.json retains the receipts.

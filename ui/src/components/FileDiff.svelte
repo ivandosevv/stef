@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { diffLines, isTruncatedDiff } from '../diff';
   import type { AgentEvent } from '../lib';
+  import DiffLines from './DiffLines.svelte';
   let { step, onclose }: { step: AgentEvent; onclose: () => void } = $props();
   let dialog: HTMLDialogElement;
   const lines = $derived(diffLines(step.diff ?? ''));
@@ -10,7 +11,14 @@
   onMount(() => {
     const opener = document.activeElement;
     dialog.showModal();
-    return () => { dialog.close(); if (opener instanceof HTMLElement && opener.isConnected) opener.focus(); };
+    return () => {
+      dialog.close();
+      void tick().then(() => {
+        const target = opener instanceof HTMLElement && opener.isConnected ? opener
+          : document.querySelector<HTMLElement>('.show-diff, .full-diff') ?? document.querySelector<HTMLElement>('.step.selected');
+        target?.focus({ preventScroll: true });
+      });
+    };
   });
 </script>
 
@@ -22,11 +30,7 @@
     <!-- Keyboard users need to focus this region to scroll long source lines. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div class="diff-scroll" role="region" aria-label="Code diff" tabindex="0">
-      {#each lines as line, index (index)}
-        <div class="diff-line" data-testid="diff-line" data-kind={line.kind}>
-          <span class="line-number" aria-hidden="true">{line.oldLine ?? ''}</span><span class="line-number" aria-hidden="true">{line.newLine ?? ''}</span><span class="diff-prefix">{line.prefix}</span><code class="diff-code">{line.text}</code>
-        </div>
-      {/each}
+      <DiffLines {lines} />
     </div>
   {:else}<p class="diff-empty">{emptyMessage}</p>{/if}
 </dialog>
@@ -45,13 +49,5 @@
   .diff-notice { flex-shrink: 0; }
   .diff-scroll { overflow: auto; min-height: 0; border-top: 1px solid var(--border); padding: 6px 0; font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .diff-scroll:focus-visible { outline: 1px solid var(--focus); outline-offset: -2px; }
-  .diff-line { display: grid; grid-template-columns: 38px 38px 18px 1fr; width: max-content; min-width: 100%; padding-right: 16px; }
-  .line-number { color: var(--muted); text-align: right; padding-right: 8px; user-select: none; }
-  .diff-prefix, .diff-code { white-space: pre; font: inherit; tab-size: 4; }
-  .diff-prefix { text-align: center; }
-  .diff-line[data-kind="addition"] { background: var(--diff-add-bg); color: var(--diff-add); }
-  .diff-line[data-kind="removal"] { background: var(--diff-remove-bg); color: var(--diff-remove); }
-  .diff-line[data-kind="hunk"], .diff-line[data-kind="meta"] { color: var(--muted); }
-  .diff-line[data-kind="hunk"] { background: var(--hover); }
-  @media (max-width: 420px) { .diff-line { grid-template-columns: 28px 28px 16px 1fr; } .diff-header { padding-left: 12px; padding-right: 12px; } .diff-reason { padding-left: 12px; padding-right: 12px; } }
+  @media (max-width: 420px) { .diff-header { padding-left: 12px; padding-right: 12px; } .diff-reason { padding-left: 12px; padding-right: 12px; } }
 </style>

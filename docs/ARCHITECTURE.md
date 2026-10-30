@@ -102,9 +102,19 @@ report_changes batches are rejected atomically. Old history remains available
 for explicit inspection and clarification rather than automatic backfill.
 
 Design is a local view preference, independent of reporting. Minimal keeps inline
-reasons; Interactive shows the selected exact hunk's before/after panes or a
+reasons; Interactive shows the selected exact hunk's wrapped unified diff or a
 milestone's reported action, state, and parent paths. All previews are computed
-locally from saved events. The view remembers the preference and suggestion draft
+locally from saved events. Interactive and Show diff share the same parsed rows,
+old/new line numbers, prefixes, source text, and colors; Interactive wraps source
+without horizontal scrolling. Selecting another file or hunk resets the preview
+scroll to its start; late reasons on the same revision preserve its position.
+Closing a diff restores the opener after rendering, with a selected-step fallback
+when following has replaced that button. Live tail step/revision changes select and reveal
+the latest node after the DOM updates, without moving keyboard focus. An open
+diff, focused suggestion input, or nonempty draft defers that follow to the newest
+pending node. Snapshot chat/window boundaries reset it; reload restores the saved
+selection and reconnect follows newly arrived tail activity. Late historical
+reasons never steal selection. The view remembers the preference and suggestion draft
 without requesting agent output. Explain more alone submits a targeted feedback
 question. A report_event context_id reply validates the retained chat/node/action
 and attaches full context to the original step. It creates no new file revision,

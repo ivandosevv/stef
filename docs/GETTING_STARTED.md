@@ -53,8 +53,10 @@ Every mode change starts a new reporting window. Every file requests explanation
 only for subsequent saves. Show saved history opens earlier work locally and
 does not request missing historical explanations.
 
-Use Design to choose Minimal or Interactive. Interactive shows exact before/after
-code hunks and reported milestone paths beside the selected step. This visual
+Use Design to choose Minimal or Interactive. Interactive shows the exact saved
+Git-style diff with wrapped lines and reported milestone paths beside the selected
+step. New changes select and scroll to the latest step in both designs; an open
+diff or unfinished suggestion defers following until you finish inspecting it. This visual
 choice makes no AI call. Click Explain more only when you want extra agent context;
 the token warning applies to that explicit question, delivered at the next check-in.
 An unexplained file offers Request explanation in both designs. It asks about

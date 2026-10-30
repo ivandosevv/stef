@@ -31,6 +31,7 @@ button:disabled { cursor: default; opacity: .3; }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
 .stef-app { max-width: 1000px; margin: auto; }
 header { height: 46px; margin: 0 20px; display: flex; align-items: center; justify-content: space-between; }
+.stef-app > header { position: sticky; top: 0; z-index: 5; background: var(--bg); }
 .brand { font-size: 18px; font-weight: 500; letter-spacing: -.4px; }
 .header-actions { position: relative; display: flex; align-items: center; gap: 8px; }
 .design { position: static; }
@@ -46,7 +47,7 @@ header { height: 46px; margin: 0 20px; display: flex; align-items: center; justi
 .history-control button { border: 0; background: none; color: var(--control); font-size: 10px; padding: 5px 0; }
 .history-control small { color: var(--faint); font-size: 10px; }
 .workflow-layout.interactive { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); align-items: start; padding: 6px 20px 24px; gap: 20px; }
-.interactive-detail { min-width: 0; position: sticky; top: 12px; padding-top: 22px; }
+.interactive-detail { min-width: 0; position: sticky; top: 58px; padding-top: 22px; }
 .visual-empty { min-height: 200px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 8px; }
 .visual-empty > span { font-size: 26px; color: var(--edge); }
 @media (max-width: 700px) { .workflow-layout.interactive { grid-template-columns: minmax(0, 1fr); padding: 0 12px 24px; gap: 0; } .interactive-detail { position: static; padding: 0; } .workflow-layout.interactive .workflow-canvas { max-height: 300px; overflow-y: auto; } }
@@ -70,6 +71,7 @@ header { height: 46px; margin: 0 20px; display: flex; align-items: center; justi
 .appearance-option[aria-checked="true"] { color: var(--text); }
 .workflow-canvas { width: 100%; overflow-x: hidden; }
 .workflow-canvas svg { display: block; margin: auto; }
+.workflow-canvas foreignObject { scroll-margin-block: 58px 12px; }
 .flow-arrow, .flow-arrowhead { fill: none; stroke: var(--edge); stroke-width: 1; stroke-linejoin: round; }
 .flow-arrow.sequence { stroke-dasharray: 2 3; }
 .step { display: block; width: 100%; height: 38px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--label); text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

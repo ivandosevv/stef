@@ -9,7 +9,7 @@
   import { readDesign, saveDesign, type Design } from './design';
   import { hasFileDiff } from './diff';
   import { connectStream, isEmbedded, sendToHost } from './transport';
-  import { workflowSteps, workflowWindows, shortName, isUpdateMode, type AgentEvent, type UpdateMode } from './lib';
+  import { workflowSteps, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode } from './lib';
 
   let events = $state<AgentEvent[]>([]);
   let session = $state('');
@@ -30,11 +30,27 @@
   type ContextRequest = { session: string; step: string; reference: string; after: string; missing: boolean; node: string; action: AgentEvent['action'] };
   let contextRequests = $state<ContextRequest[]>([]);
   let requestEpoch = 0;
+  let typing = $state(false);
+  let followed = $state(false);
+  let pendingFollow = $state<string | null>(null);
+  let reveal = $state<{ id: string; version: number } | null>(null);
+  let revealVersion = 0;
   const embedded = isEmbedded();
   const windows = $derived(workflowWindows(events, updateMode, updatesFrom));
   const steps = $derived(showHistory ? [...windows.saved, ...windows.current] : windows.current);
   const chosen = $derived(steps.find(step => step.id === selected));
   const chosenRequest = $derived(contextRequests.find(request => request.session === session && request.reference === (chosen?.reference_id ?? chosen?.id)));
+  const followBlocked = $derived(diffOpen || typing || Boolean(note.trim()));
+  $effect(() => {
+    if (!pendingFollow || followBlocked) return;
+    const latest = windows.current.at(-1);
+    pendingFollow = null;
+    if (!latest) return;
+    selected = latest.id; followed = true;
+    requestStatus = ''; note = ''; noteStatus = ''; noteOpen = false;
+    rememberSelection();
+    reveal = { id: latest.id, version: ++revealVersion };
+  });
   $effect(() => { if (diffOpen && (!chosen || !hasFileDiff(chosen))) diffOpen = false; });
   $effect(() => {
     const answered = contextRequests.filter(request => events.some(event =>
@@ -49,10 +65,29 @@
   type NativeWindow = Window & { stefNativeReady?: () => Promise<void> };
   const selectionKey = () => 'stef-selection:' + session;
   const historyKey = () => 'stef-history:' + session + ':' + updatesFrom;
+  function rememberSelection() {
+    try {
+      if (selected) localStorage.setItem(selectionKey(), selected);
+      else localStorage.removeItem(selectionKey());
+    } catch { /* Selection still works when view storage is unavailable. */ }
+  }
+  function resetFollow() { pendingFollow = null; reveal = null; followed = false; }
+  const stepKey = (step?: AgentEvent) => step ? step.id + ':' + (step.reference_id ?? step.id) : '';
+  function followUpdate(previous?: AgentEvent) {
+    const latest = workflowWindows(events, updateMode, updatesFrom).current.at(-1);
+    if (!latest) return;
+    if (stepKey(latest) !== stepKey(previous)) pendingFollow = latest.id;
+    else if (followed && selected === latest.id && !followBlocked && (latest.why !== previous?.why || latest.summary !== previous?.summary || latest.status !== previous?.status)) {
+      reveal = { id: latest.id, version: ++revealVersion };
+    }
+  }
   function changeDesign(value: Design) { design = value; saveDesign(value); }
   function resetRequests() { requestEpoch++; contextRequests = []; requestStatus = ''; asking = false; }
   function toggleHistory(value = !showHistory) {
     showHistory = value;
+    if (!value && !windows.current.some(step => step.id === selected)) {
+      note = ''; noteStatus = ''; noteOpen = false; typing = false;
+    }
     try { localStorage.setItem(historyKey(), String(value)); } catch { /* History is still available in this view. */ }
   }
 
@@ -90,18 +125,25 @@
       if (!response.ok) throw new Error('Could not change updates.');
       const settings = await response.json();
       if (!isUpdateMode(settings.update_mode)) throw new Error('Could not change updates.');
-      if (settings.update_mode !== previousMode) { toggleHistory(false); diffOpen = false; resetRequests(); }
+      if (settings.update_mode !== previousMode) { toggleHistory(false); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); }
       updateMode = settings.update_mode;
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change updates.'; throw cause; }
   }
 
   function select(id: string) {
+    resetFollow();
     selected = selected === id ? null : id;
     diffOpen = false;
     requestStatus = '';
     note = ''; noteStatus = ''; noteOpen = false;
-    if (selected) localStorage.setItem(selectionKey(), selected);
-    else localStorage.removeItem(selectionKey());
+    typing = false;
+    rememberSelection();
+  }
+  function dismissSelection() {
+    if (!selected || diffOpen) return;
+    if (pendingFollow && (noteOpen || typing || note.trim())) {
+      note = ''; noteStatus = ''; noteOpen = false; typing = false;
+    } else select(selected);
   }
   async function clear() {
     if (busy || !session) return;
@@ -110,7 +152,7 @@
       const response = await fetch('/api/sessions/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session }) });
       if (!response.ok) throw new Error('Could not clear this workflow.');
       const snapshot = await response.json();
-      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; resetRequests(); showHistory = false; localStorage.removeItem(selectionKey()); }
+      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); showHistory = false; rememberSelection(); }
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not clear this workflow.'; }
     finally { busy = false; }
   }
@@ -121,16 +163,17 @@
     try {
       const response = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session, node_name: chosen.node_name, target_agent: '*', kind: 'suggestion', text: note.trim() }) });
       if (!response.ok) throw new Error('Could not send your note.');
-      note = ''; noteStatus = 'Queued for the agent’s next check-in.';
+      note = ''; typing = false; noteStatus = 'Queued for the agent’s next check-in.';
     } catch (cause) { noteStatus = cause instanceof Error ? cause.message : 'Could not send your note.'; }
     finally { busy = false; }
   }
   onMount(() => {
     const disconnect = connectStream(data => {
+      const previous = workflowWindows(events, updateMode, updatesFrom).current.at(-1);
       if (data.type === 'snapshot') {
         const boundary = data.updates_from && /^\d+$/.test(data.updates_from) ? data.updates_from : '0';
         const windowChanged = boundary !== updatesFrom || (isUpdateMode(data.update_mode) && data.update_mode !== updateMode);
-        if (windowChanged) { showHistory = false; diffOpen = false; resetRequests(); }
+        if (windowChanged) { showHistory = false; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); }
         updatesFrom = boundary;
         if (isUpdateMode(data.update_mode)) updateMode = data.update_mode;
         const id = data.session_id ?? 'local';
@@ -142,12 +185,17 @@
           if (!retainedRequests.length) resetRequests();
           else contextRequests = retainedRequests;
         }
-        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; diffOpen = false; resetRequests(); showHistory = localStorage.getItem(historyKey()) === 'true'; }
+        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); showHistory = localStorage.getItem(historyKey()) === 'true'; }
         else if (windowChanged) toggleHistory(false);
-        if (!workflowSteps(events).some(step => step.id === selected)) { selected = null; requestStatus = ''; localStorage.removeItem(selectionKey()); }
+        if (!workflowSteps(events).some(step => step.id === selected)) { selected = null; requestStatus = ''; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetFollow(); rememberSelection(); }
         if (resumed && selected && !workflowWindows(events, updateMode, updatesFrom).current.some(step => step.id === selected)) toggleHistory(true);
+        if (changed) {
+          if (selected) reveal = { id: selected, version: ++revealVersion };
+          else pendingFollow = workflowWindows(events, updateMode, updatesFrom).current.at(-1)?.id ?? null;
+        } else if (!windowChanged) followUpdate(previous);
       } else if (!data.event.session_id || data.event.session_id === session) {
-        events = [...events.filter(event => event.id !== data.event.id), data.event].slice(-5000);
+        events = mergeEvents(events, [data.event]);
+        followUpdate(previous);
       }
     }, (online) => { connected = online; });
     void (window as NativeWindow).stefNativeReady?.();
@@ -162,7 +210,7 @@
     {#if updateMode === 'disabled'}<div class="empty"><p>Updates disabled</p></div>{:else}
     {#if windows.saved.length}<div class="history-control"><button onclick={() => toggleHistory()}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
     <div class="workflow-layout" class:interactive={design === 'interactive'}>
-    <GraphCanvas {steps} {selected} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
+    <GraphCanvas {steps} {selected} {reveal} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
       {#snippet detail(step)}
         {#if design === 'minimal'}
         <section class="step-detail" aria-label="Why this step">
@@ -175,7 +223,7 @@
           {#if hasFileDiff(step)}<button class="show-diff" onclick={() => diffOpen = true}>Show diff</button>{/if}
           {#if embedded && step.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: step.node_name })}>Open {shortName(step.node_name)}</button>{/if}
           {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
-            <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
+            <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
             {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
           {/if}
         </section>
@@ -189,7 +237,7 @@
           <section class="step-detail" aria-label="Suggest for this step">
             {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: chosen.node_name })}>Open {shortName(chosen.node_name)}</button>{/if}
             {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
-              <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
+              <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
               {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
             {/if}
           </section>
@@ -201,4 +249,4 @@
   </main>
 </div>
 {#if diffOpen && chosen && hasFileDiff(chosen)}<FileDiff step={design === 'interactive' ? { ...chosen, why: chosen.explanation || chosen.why } : chosen} onclose={() => diffOpen = false} />{/if}
-<svelte:window onkeydown={event => { if (event.key === 'Escape' && selected && !diffOpen) select(selected); }} />
+<svelte:window onkeydown={event => { if (event.key === 'Escape') dismissSelection(); }} />

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { isFileChange, type AgentEvent } from '../lib';
-  import { isTruncatedDiff } from '../diff';
-  import { milestoneAction, reportedParents, visualHunks } from '../visual';
+  import { diffHunks, isTruncatedDiff } from '../diff';
+  import { milestoneAction, reportedParents } from '../visual';
+  import DiffLines from './DiffLines.svelte';
 
   let { step, steps, onselect, ondiff, onexplain, connected, asking, requestStatus }: {
     step: AgentEvent;
@@ -15,7 +16,7 @@
   } = $props();
 
   const file = $derived(isFileChange(step));
-  const hunks = $derived(visualHunks(step.diff ?? ''));
+  const hunks = $derived(diffHunks(step.diff ?? ''));
   const truncated = $derived(isTruncatedDiff(step.diff ?? ''));
   const parents = $derived(reportedParents(step, steps));
   const reason = $derived(step.explanation ?? step.why);
@@ -69,28 +70,19 @@
     <div class="saved-change">
       {#if truncated}<p class="notice" data-testid="visual-truncation">Preview truncated. Only the captured portion is available.</p>{/if}
       {#if hunk}
-        <div class="hunk-controls">
-          <span class="section-label" aria-live="polite">Hunk {hunkIndex + 1} of {hunks.length}</span>
-          <div class="hunk-buttons"><button aria-label="Previous hunk" disabled={hunkIndex === 0} onclick={() => moveHunk(-1)}>←</button><button aria-label="Next hunk" disabled={hunkIndex >= hunks.length - 1} onclick={() => moveHunk(1)}>→</button></div>
+        {#if hunks.length > 1}
+          <div class="hunk-controls">
+            <span class="section-label" aria-live="polite">Hunk {hunkIndex + 1} of {hunks.length}</span>
+            <div class="hunk-buttons"><button aria-label="Previous hunk" disabled={hunkIndex === 0} onclick={() => moveHunk(-1)}>←</button><button aria-label="Next hunk" disabled={hunkIndex >= hunks.length - 1} onclick={() => moveHunk(1)}>→</button></div>
+          </div>
+        {/if}
+        {#key step.id + ':' + hunkIndex}
+        <!-- Keyboard users can scroll a tall captured hunk without moving the workflow. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div class="code-diff" role="region" aria-label="Code diff" tabindex="0">
+          <DiffLines lines={hunk} wrap testId="visual-line" />
         </div>
-        <code class="hunk-range">{hunk.header}</code>
-        <div class="code-comparison">
-          {#each [{ label: 'Before', lines: hunk.before }, { label: 'After', lines: hunk.after }] as side (side.label)}
-            <section class="code-side" aria-label={side.label}>
-              <h3>{side.label}</h3>
-              <!-- Saved source may extend horizontally; focus enables keyboard scrolling. -->
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-              <div class="code-scroll" role="region" aria-label={side.label + ' code'} tabindex="0">
-                {#if side.lines.length}
-                  {#each side.lines as line, index (index)}
-                    <div class="source-line" data-testid="visual-line" data-kind={line.kind}><span class="line-number">{line.line ?? ''}</span><span class="line-prefix" aria-hidden="true">{line.kind === 'addition' ? '+' : line.kind === 'removal' ? '-' : ''}</span><code>{line.text}</code></div>
-                  {/each}
-                {:else}<p class="empty-side">No lines in this hunk.</p>{/if}
-              </div>
-            </section>
-            {#if side.label === 'Before'}<svg class="comparison-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17m-6-6 6 6-6 6" /></svg>{/if}
-          {/each}
-        </div>
+        {/key}
       {:else}<p class="notice">{step.diff ? 'No line preview is available for this saved revision.' : emptyMessage}</p>{/if}
       <button class="text-button full-diff" onclick={ondiff}>Show diff</button>
     </div>
@@ -129,20 +121,7 @@
   .hunk-buttons { display: flex; gap: 4px; }
   .hunk-buttons button { width: 26px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--control); font: inherit; }
   .hunk-buttons button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
-  .hunk-range { display: block; margin-bottom: 8px; color: var(--muted); font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-  .code-comparison { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); gap: 6px; align-items: start; }
-  .comparison-arrow { width: 20px; height: 24px; margin-top: 3px; fill: none; stroke: var(--control); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .code-side { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); }
-  h3 { margin: 0; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 10px; font-weight: 500; color: var(--muted); }
-  .code-scroll { max-height: 18rem; overflow: auto; padding: 5px 0; font: 10px/1.8 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  .source-line { display: grid; grid-template-columns: 32px 14px 1fr; width: max-content; min-width: 100%; padding-right: 10px; }
-  .line-number { text-align: right; padding-right: 5px; color: var(--muted); user-select: none; }
-  .line-prefix { text-align: center; }
-  .source-line code { font: inherit; white-space: pre; tab-size: 4; }
-  .source-line[data-kind="addition"] { background: var(--diff-add-bg); color: var(--diff-add); }
-  .source-line[data-kind="removal"] { background: var(--diff-remove-bg); color: var(--diff-remove); }
-  .source-line[data-kind="meta"] { color: var(--muted); }
-  .empty-side { margin: 0; padding: 4px 8px; color: var(--muted); font: 11px/1.6 system-ui, sans-serif; }
+  .code-diff { min-width: 0; max-height: 18rem; overflow-x: hidden; overflow-y: auto; padding: 5px 0; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .notice { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
   .text-button { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--control); font: inherit; font-size: 11px; }
   .text-button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
@@ -151,9 +130,9 @@
   .request-help { max-width: 42ch; margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
   .request-status { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
   button:disabled { opacity: .5; cursor: default; }
-  button:focus-visible, .code-scroll:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
-  .code-scroll:focus-visible { outline-offset: -2px; }
+  button:focus-visible, .code-diff:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
+  .code-diff:focus-visible { outline-offset: -2px; }
   @keyframes breathe { 50% { opacity: .3; } }
   @media (prefers-reduced-motion: reduce) { .state[data-state="running"] .state-dot { animation: none; } }
-  @media (max-width: 440px) { .change-visual { padding: 16px; } .code-comparison { grid-template-columns: minmax(0, 1fr); } .comparison-arrow { transform: rotate(90deg); justify-self: center; margin: 0; } .path-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .path-arrow { transform: rotate(90deg); justify-self: center; } }
+  @media (max-width: 440px) { .change-visual { padding: 16px; } .path-row { grid-template-columns: minmax(0, 1fr); gap: 4px; } .path-arrow { transform: rotate(90deg); justify-self: center; } }
 </style>

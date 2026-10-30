@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffLines, isTruncatedDiff } from './diff';
+import { diffHunks, diffLines, isTruncatedDiff } from './diff';
 import { workflowSteps, type AgentEvent } from './lib';
 
 describe('captured unified diff', () => {
@@ -34,6 +34,27 @@ describe('captured unified diff', () => {
   it('detects incomplete captured previews', () => {
     expect(isTruncatedDiff('@@ -1 +1 @@\n-old\n+new\n… [truncated]')).toBe(true);
     expect(isTruncatedDiff('@@ -1 +1 @@\n+… [truncated]\n')).toBe(false);
+  });
+  it('selects complete unified hunks without duplicating context or losing exact source', () => {
+    const patch = '--- a/main.ts\n+++ b/main.ts\n@@ -8,2 +8,2 @@\n context\n-Иване\n\\ No newline at end of file\n+\tИване  \n@@ -42 +43,0 @@\n-last\n';
+    const hunks = diffHunks(patch);
+    expect(hunks).toHaveLength(2);
+    expect(hunks[0]).toEqual(diffLines(patch).slice(2, 7));
+    expect(hunks[0].filter(row => row.kind === 'context')).toHaveLength(1);
+    expect(hunks[0].at(-1)).toMatchObject({ kind: 'addition', text: '\tИване  ', newLine: 9 });
+    expect(hunks[1]).toEqual([
+      { kind: 'hunk', prefix: '', text: '@@ -42 +43,0 @@' },
+      { kind: 'removal', prefix: '-', text: 'last', oldLine: 42 },
+    ]);
+  });
+  it('keeps capture notices outside interactive code while retaining identical source text', () => {
+    expect(diffHunks('')).toEqual([]);
+    expect(diffHunks('--- a/empty\n+++ b/empty\n')).toEqual([]);
+    const hunks = diffHunks('@@ -0,0 +1 @@\n+… [truncated]\n… [truncated]');
+    expect(hunks[0]).toEqual([
+      { kind: 'hunk', prefix: '', text: '@@ -0,0 +1 @@' },
+      { kind: 'addition', prefix: '+', text: '… [truncated]', newLine: 1 },
+    ]);
   });
   it('keeps the observed diff when its exact explanation arrives', () => {
     const base: AgentEvent = { id: '1', timestamp: '', agent_id: 'filesystem', node_name: 'main.ts', action: 'modified', summary: 'File modified', why: 'Observed', status: 'ready', source: 'watcher', kind: 'file', diff: '@@ -1 +1 @@\n-old\n+new\n' };
