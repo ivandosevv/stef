@@ -15,11 +15,11 @@ or universally push a user message into a running turn.
 | VS Code Copilot | vscode or copilot: .vscode/mcp.json | JSONC preservation and SDK transport tested; real Copilot task pending |
 | Gemini CLI | gemini: .gemini/settings.json | Project configuration and SDK transport tested; MCP-only adapter, real task pending |
 | Roo Code | roo: .roo/mcp.json | Project configuration and SDK transport tested; real task pending |
-| OpenCode local agent | opencode or open-code: project opencode.json, or existing opencode.jsonc | JSON/JSONC preservation and SDK command transport tested; actual OpenCode task/pane pending |
+| OpenCode local agent | opencode or open-code: project opencode.json, or existing opencode.jsonc | Actual 2.2.1 runtime connection verified; automatic project-config startup unresolved; real task/pane pending |
 | Devin Local / Desktop / CLI | devin: .devin/mcp_config.json | Current project format and SDK transport tested; real task pending |
 | JetBrains AI Assistant in IntelliJ and supported JetBrains IDEs | jetbrains or intellij: project-scoped JSON import in AI Assistant settings | Export and SDK transport tested; actual import/task/pane pending |
 | Cline, Windsurf / Cascade | cline or windsurf: generated JSON to merge in the client's MCP settings | Export and SDK transport tested; real tasks pending; Windsurf-specific current docs redirect to Devin |
-| Hermes | hermes: generated mcp_servers mapping to merge into config.yaml | Export and SDK transport tested; actual import/task pending |
+| Hermes | hermes: generated mcp_servers mapping to merge into config.yaml | Actual isolated import and MCP discovery verified, with all four tools; isolated task blocked by host authentication |
 | Other MCP agents | generic: common stdio JSON to adapt/import | Transport tested; the host must support its own MCP schema |
 
 Choose the actual agent rather than the outer editor. Codex running in Cursor
@@ -156,6 +156,10 @@ and explicit `enabled: false`/environment policies. If both project files exist,
 setup stops without changing either rather than guessing which file should own
 stef. Project configuration and managed tool policy can still prevent discovery
 or tool access; use `opencode mcp list` in the actual host to verify it.
+The installed 2.2.1 client loaded the generated settings but did not start MCP
+from that project configuration. A separate native runtime registration connected
+successfully. Automatic startup remains unresolved, so setup success alone is
+not evidence that this version is ready to report a workflow.
 
 Official references: [OpenCode MCP](https://opencode.ai/docs/mcp-servers/),
 [OpenCode project config](https://opencode.ai/docs/config/), [Cursor](https://cursor.com/docs/mcp.md),

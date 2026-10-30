@@ -580,3 +580,18 @@ The opt-in runner is scripts/smoke-claude.py. Results and screenshots are in the
 ignored artifacts directory. Both designs use the retained Claude revision;
 general application behavior previews and other real-client tasks remain separate
 verification work.
+
+## Additional real clients
+
+- Hermes 0.22.5 imported the generated entry in an isolated profile, connected
+  to stef, and discovered all four tools. Its model task failed before inference
+  because the installed gateway resolves credentials in a separate profile
+  scope. A retry using its verified ANTHROPIC_API_KEY field made zero API calls.
+  MCP discovery passed; actual file explanations remain unverified.
+- OpenCode 2.2.1 loaded the generated project settings but did not start MCP
+  automatically. A separate native runtime registration connected to stef.
+  Both tested configuration shapes had the same startup failure, so no schema
+  change was justified. Full task and automatic startup verification remain open.
+- These tests used isolated personal fixtures. Their processes were stopped,
+  and no source or global client configuration changed. Evidence is retained
+  in artifacts/alternate-client-final-result.md and its linked JSON results.
