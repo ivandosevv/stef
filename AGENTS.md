@@ -30,7 +30,12 @@ Only mark individual agent/editor integrations supported after actual verificati
 Choose the MCP setup client for the actual agent rather than its outer IDE.
 The client catalog distinguishes project configuration from import exports;
 never equate either with a real host connection or an opened IDE pane.
-Do not write global client profiles or guess project settings/hook schemas.
+Default setup stays project scoped; do not guess project settings/hook schemas.
+Ivan explicitly requested fixing Claude sessions launched from his home folder.
+The opt-in scripts/connect-claude.py may register only stef through Claude's
+native user-scope command and install a personal skill pointer, bound to an
+explicit personal project. Preserve all other client settings. Never use the
+home directory as an observer root or extend observation into excluded projects.
 Keep the interface limited to the workflow, brief agent-supplied reasons,
 directed arrows, a compact suggestion field, per-chat Clear, and the requested
 small appearance picker (Dark, Light, Eye comfort, System), and compact Updates

@@ -102,6 +102,7 @@ def main():
     artifacts = ROOT / "artifacts"
     artifacts.mkdir(exist_ok=True)
     workspace = Path(tempfile.mkdtemp(prefix="claude.", dir=ROOT / ".test-workspace"))
+    child_env["CLAUDE_CONFIG_DIR"] = str(workspace / ".stef/claude-test-profile")
     subprocess.run(["git", "init", "-q", str(workspace)], check=True)
     (workspace / "calculator.mjs").write_text(
         "export const add = (a, b) => a - b;\n"
@@ -167,8 +168,7 @@ def main():
                 prompt = "Reply ready. Do not edit files or call tools."
             command = [claude, "-p", prompt, "--output-format", "stream-json", "--verbose",
                        "--no-session-persistence", "--session-id", session_uuid,
-                       "--setting-sources", "project,local", "--strict-mcp-config",
-                       "--mcp-config", str(workspace / ".mcp.json"), "--disable-slash-commands",
+                       "--setting-sources", "project,local",
                        "--permission-mode", "dontAsk", "--tools", "Read,Edit,Bash",
                        "--allowedTools", "Read", "Edit", "Bash(npm test*)",
                        "mcp__stef__get_state", "mcp__stef__set_session",
@@ -202,6 +202,7 @@ def main():
             connected = any(server.get("name") == "stef" and server.get("status") == "connected"
                             for message in messages for server in message.get("mcp_servers", []))
             assert connected, f"Claude did not load stef; see {stderr_path}"
+            assert any("stef" in message.get("skills", []) for message in messages), "Project /stef was not discovered"
             if options.startup_only:
                 hooks_loaded = any(message.get("subtype") == "hook_response" for message in messages)
                 assert hooks_loaded, "Claude did not load project hooks"

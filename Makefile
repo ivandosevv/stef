@@ -1,4 +1,4 @@
-.PHONY: install ui engine build run dev test check clean extension check-extension test-extension release test-native configure-codex test-codex test-claude
+.PHONY: install ui engine build run dev test check clean extension check-extension test-extension release test-native configure-codex test-codex test-claude test-claude-home
 ROOT := $(CURDIR)
 REPO ?= $(ROOT)/examples/sandbox
 PORT ?= 4820
@@ -64,3 +64,7 @@ test-codex: build
 # Opt-in integration: this invokes the real Claude Code CLI using existing authentication.
 test-claude: build
 	python3 scripts/smoke-claude.py
+
+# Opt-in integration: verify automatic discovery from home in an isolated profile.
+test-claude-home: build
+	python3 scripts/smoke-claude-home.py

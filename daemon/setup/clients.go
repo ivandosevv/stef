@@ -27,6 +27,7 @@ type Configuration struct {
 	Client     string `json:"client"`
 	ConfigPath string `json:"config_path"`
 	HooksPath  string `json:"hooks_path,omitempty"`
+	SkillPath  string `json:"skill_path,omitempty"`
 	Configured bool   `json:"configured"`
 	NextStep   string `json:"next_step"`
 }
@@ -87,6 +88,7 @@ func Configure(repo, executable, endpoint, name string) (Configuration, error) {
 		err = Codex(repo, executable, endpoint)
 	case "claude":
 		err = Claude(repo, executable, endpoint)
+		result.SkillPath = ClaudeSkillPath
 	case "cursor":
 		err = Cursor(repo, executable, endpoint)
 	default:

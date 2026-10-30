@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 
 	"github.com/ivandosevv/stef/daemon/mcp"
@@ -14,11 +15,19 @@ func Claude(repo, executable, endpoint string) error {
 	if err := mcp.ValidateEndpoint(endpoint); err != nil {
 		return err
 	}
+	repo, err := filepath.Abs(repo)
+	if err != nil {
+		return err
+	}
 	root, err := os.OpenRoot(repo)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
+	skill, err := prepareClaudeSkill(root, repo, executable, endpoint)
+	if err != nil {
+		return err
+	}
 	raw, err := readOptional(root, ".mcp.json")
 	if err != nil {
 		return err
@@ -37,6 +46,14 @@ func Claude(repo, executable, endpoint string) error {
 	}
 	if err := root.MkdirAll(".claude", 0700); err != nil {
 		return err
+	}
+	if skill != nil {
+		if err := root.MkdirAll(filepath.Dir(ClaudeSkillPath), 0700); err != nil {
+			return err
+		}
+		if err := atomicWrite(root, ClaudeSkillPath, skill); err != nil {
+			return err
+		}
 	}
 	if !bytes.Equal(raw, next) {
 		if err := atomicWrite(root, ".mcp.json", next); err != nil {

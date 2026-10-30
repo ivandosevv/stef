@@ -33,6 +33,9 @@ Some clients need an import, trust approval, or reload. [Setup guide](docs/CLIEN
 
 If the bundled skill is loaded, you can ask your agent to **enable stef for this project**.
 
+For Claude launched from home, run `python3 scripts/connect-claude.py --repo /path/to/personal/project`.
+Restart Claude once to load `/stef` and its MCP from your personal settings.
+
 ## Current status
 
 stef is an early personal project. Thirteen MCP configurations are tested;

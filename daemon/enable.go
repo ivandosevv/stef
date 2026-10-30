@@ -20,6 +20,9 @@ func enableResult(configuration clientsetup.Configuration, root, endpoint, view 
 	if configuration.HooksPath != "" {
 		result["hooks_path"] = filepath.Join(root, configuration.HooksPath)
 	}
+	if configuration.SkillPath != "" {
+		result["skill_path"] = filepath.Join(root, configuration.SkillPath)
+	}
 	if view == "ide" {
 		result["view_opened"] = false
 		result["view_next_step"] = "Open view_url using this host's built-in browser if available; use --view native for a companion beside other hosts."

@@ -98,6 +98,23 @@ use the same root and --port 4825. No global configurations are changed automati
 In this checkout, .agents/skills/stef is discoverable by Codex and its VS Code
 panel; .claude/skills/stef points to the same portable skill. Ask **Enable stef for
 this project**, **$stef enable** in Codex, or **/stef enable** in Claude Code.
+Claude project setup also installs a self-contained `.claude/skills/stef/SKILL.md`
+in the chosen target and returns `skill_path`. A nested source download alone
+does not expose a skill to the parent project. Existing skills are preserved.
+
+For Claude launched from home or another folder, opt into personal registration:
+
+~~~sh
+python3 scripts/connect-claude.py --repo /absolute/path/to/personal/project
+~~~
+
+This registers only stef through Claude's native user-scope MCP command and
+installs `~/.claude/skills/stef` pointing to the chosen project's generated
+bootstrap skill. The observer remains bound to that project. Home is rejected
+as an observer root. Other client settings are preserved, and conflicting stef
+entries are left for review. Default project setup never writes user profiles.
+Restart Claude once, then use `/stef` or `/stef enable`. Running
+`claude mcp get stef` from home should show User config and Connected.
 
 The skill uses stef --enable --client <client> --repo <authorized-root> to
 configure and launch from the current agent. stef --list-clients returns all
@@ -258,6 +275,7 @@ Start Claude in the configured project folder. The bundled `/stef` skill and
 project `.mcp.json` belong to that folder. Use `claude mcp get stef` there to
 check discovery; Pending approval means Claude needs its own `/mcp` approval.
 An existing conversation in another folder does not load this project's setup.
+Use the opt-in personal registration above when Claude is launched from home.
 
 Claude Code 2.1.223 completed real isolated fixes in Every file, Major milestones,
 and Disabled. Every file supplied the exact revision's explanation before running

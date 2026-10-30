@@ -595,3 +595,29 @@ verification work.
 - These tests used isolated personal fixtures. Their processes were stopped,
   and no source or global client configuration changed. Evidence is retained
   in artifacts/alternate-client-final-result.md and its linked JSON results.
+
+## Claude discovery from home
+
+Project setup now installs the skill in the selected project, including when
+the source checkout lives in its hidden runtime folder. It returns the skill
+path and preserves existing skills. Broken or escaping skill paths fail before
+the MCP configuration is written.
+
+The opt-in personal connector registers only stef in Claude's user scope and
+installs its personal skill pointer. Its observer remains bound to the selected
+project, and it rejects the home directory as a target. Eight native CLI tests
+verify registration, preserved unrelated settings, repeat setup, conflicts,
+malformed profiles, and path confinement.
+
+A fresh Claude 2.1.223 model session launched from /Users/I751316 with an isolated
+personal profile automatically discovered and loaded stef, connected to MCP,
+and successfully called get_state once. No --mcp-config or --strict-mcp-config
+flags were supplied, and the returned project was the isolated personal fixture
+rather than home. The actual normal home profile separately reports stef as
+User config and Connected through claude mcp get stef.
+
+Fresh project startup also discovered the generated skill and MCP automatically.
+A real Every file task completed through this native discovery path, supplying
+its exact explanation before validation. make check and make test passed,
+including backend race tests and all 41 UI tests. The rendered personal skill
+passed the skill validator. Evidence is in artifacts/claude-home-discovery-summary.json.
