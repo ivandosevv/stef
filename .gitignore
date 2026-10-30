@@ -17,3 +17,11 @@ daemon/assets/*
 !daemon/assets/placeholder.txt
 .codex/config.toml
 .codex/hooks.json
+.mcp.json
+.claude/settings.local.json
+.cursor/mcp.json
+.cursor/hooks.json
+.vscode/mcp.json
+.gemini/settings.json
+.roo/mcp.json
+.devin/mcp_config.json

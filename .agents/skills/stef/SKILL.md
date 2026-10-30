@@ -18,11 +18,21 @@ For the Codex panel in VS Code, use its built-in browser editor:
 stef --enable --client codex --view ide --repo "$project_root"
 ~~~
 
-For Claude Code, use --client claude. Use --view native for a terminal's native
-window or when explicitly requested. Honor another host's documented presentation
-capabilities and the user's choice. Quote the executable and resolved root.
+Choose --client for the actual agent, independently of its outer IDE: Codex in
+Cursor still uses codex; Claude Code in IntelliJ still uses claude. Run
+stef --list-clients for documented setup paths and their remaining client steps.
+Direct project setup is available for codex, claude, cursor, vscode (Copilot),
+gemini, roo, and devin. intellij aliases jetbrains (AI Assistant); jetbrains,
+windsurf, cline, hermes, and generic export a configuration for explicit import.
+Use --view native for a terminal's native window or when explicitly requested.
+Honor the actual editor's documented presentation capabilities and the user's
+choice. Quote the executable and resolved root.
 Enable selects/reuses a loopback port, preserves client settings, writes
-project-local MCP/hooks, and starts a resident engine. The project remembers
+project-local MCP/hooks or a root-confined import file, and starts a resident
+engine. An import receipt has client_configured=false; show its configuration_path
+and next_step so the user can import it through that client's controls. Never
+write global profiles automatically or claim the host imported an export.
+The project remembers
 --view ide so later MCP autostart also runs without a native window.
 A conflicting existing stef entry needs review; do not overwrite it.
 Use the returned endpoint to verify /healthz matches the intended root.
@@ -30,6 +40,8 @@ Use the returned endpoint to verify /healthz matches the intended root.
 For IDE view, open the returned view_url in the current editor group's built-in
 browser using the host's browser-control tool or command API when available.
 VS Code's command is workbench.action.browser.open with the URL as its argument.
+Do not send this command to Cursor or JetBrains merely because their agent is
+Codex or Claude; use a browser capability actually exposed by that host.
 The CLI's view_opened=false means the engine is ready but the host has not opened
 the view. If no browser-control capability is available, provide the localhost
 link and tell the user to paste it into the existing browser tab's address bar.
@@ -44,9 +56,13 @@ tracking can be used without hooks. For Claude Code, use /mcp to approve/reconne
 server, restarting the session if needed. Honor the client's trust controls.
 Changing files does not itself load tools into an already-running conversation.
 
-Other clients can use the same stdio/HTTP MCP contract, but only configure a
-schema documented for that client. Codex and Claude Code have the automated
-setup adapters; do not claim verified support for another host.
+Other clients use the same stdio/HTTP MCP contract with their documented schema.
+Follow the returned next_step for MCP trust, import, or reload. Hermes imports
+mcp_servers into its YAML configuration; do not substitute mcpServers or append
+a second document. JetBrains uses its MCP settings JSON at Project level rather
+than a guessed .idea file. Configuration-tested adapters and SDK transport tests
+do not prove that a real host session loaded tools, emitted hooks, or opened a
+pane; describe the actual verification performed.
 
 At the start of a task, get_state once and follow update_mode and the compact
 reporting_instructions returned in each receipt. The Updates control is shared
@@ -96,7 +112,7 @@ breaks. A missing explanation remains visible in the workflow. MCP instructions
 guide connected agents; they cannot force an unconnected or non-cooperating host
 to report. Do not claim that filesystem monitoring reveals the author's intent.
 
-stef keeps one workflow per chat. Trusted Codex/Claude start/resume hooks select
+stef keeps one workflow per chat. Trusted Codex/Claude/Cursor lifecycle hooks select
 a stable hashed chat ID. If the host does not supply those signals, call
 set_session once on a new/resumed conversation: reuse an ID already retained in
 that conversation, otherwise create a unique ID and retain the returned ID in

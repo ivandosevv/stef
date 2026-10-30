@@ -26,6 +26,9 @@
 - [x] Minimal/Interactive local views and selected-change hunk/milestone visuals
 - [x] Future-only reporting windows without historical explanation backlogs
 - [x] Explicit selected-step AI context requests without automatic enrichment
+- [x] Multi-client project setup and host-specific MCP import exports
+- [x] Cursor passive conversation/post-tool lifecycle adapter
+- [ ] Verify real Cursor, Copilot, Gemini, Roo, Devin, and JetBrains agent tasks
 - [x] Durable chat histories, start/resume selection, and per-chat Clear
 - [ ] Verify idle chat switching signals inside each real agent host
 - [ ] Verify automatic tab opening through each agent host's browser-control tools

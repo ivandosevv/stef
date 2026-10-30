@@ -365,3 +365,49 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   not certify automatic tool discovery or chat-switch signals in arbitrary
   IDE agents. This conversation continues to use the genuine local stdio MCP
   bridge. Token costs remain unmeasured; local visuals call no model.
+
+## Multi-host setup and Cursor lifecycle
+
+- Added twelve canonical --client paths and aliases, exposed through a read-only
+  --list-clients JSON catalog. Codex, Claude Code, Cursor, VS Code Copilot,
+  Gemini CLI, Roo Code, and Devin use documented project configuration.
+  JetBrains AI Assistant/IntelliJ, Windsurf, Cline, Hermes, and generic clients
+  receive root-confined import exports with client_configured=false.
+- Common configuration tests verify existing settings/server preservation,
+  idempotency, conflicts, invalid documents, precise JSON numbers, and symlink
+  confinement. VS Code JSONC extension preserves comments and trailing commas.
+  Hermes exports mcp_servers for merging into YAML; JetBrains uses its Project
+  settings import without writing an undocumented .idea file.
+- Actual official-SDK stdio tests consume the generated command/args for every
+  canonical client. All twelve initialize successfully, select their own chat,
+  and persist a genuine report through the shared engine. The resident CLI test
+  also verifies Codex, Cursor, and IntelliJ setup reuse the same live endpoint.
+  These are transport/configuration tests, not authenticated named-host tasks.
+- Cursor command hooks cover sessionStart/sessionEnd, postToolUse,
+  postToolUseFailure, and stop. Six hook tests and four setup tests verify
+  stable hashed conversation identity, privacy stripping, own-MCP suppression,
+  single-root matching, real HTTP forwarding, compatible health, preservation,
+  nonblocking registration, and Windows/POSIX command quoting. Unsupported or
+  ambiguous multiroot callbacks fail open. No permission or model hooks are added.
+- make check and make test pass: Go vet, backend race tests, eight greeting
+  cases, thirty-four UI tests, and zero Svelte/TypeScript errors or warnings.
+  All fifteen existing browser E2E scenarios pass. The updated portable skill
+  passes the Skill Creator validator. Independent source review found no
+  remaining configuration, endpoint, hook, or presentation integration defects.
+- Official current client schemas were checked from public vendor documentation.
+  Devin's dedicated MCP path is supported; Windsurf's former vendor page now
+  redirects to Devin, so its legacy option stays import-only. VS Code's
+  compatibility format remains supported and forwarded to eligible Copilot
+  harness sessions. Documentation links and limitations are in CLIENTS.md.
+- The verified personal engine was reloaded headlessly on 4825. All twelve
+  --enable paths prepared their project config or import file in this checkout,
+  reused that endpoint, retained the existing chat and Updates window, and
+  correctly returned mcp_connected=false and view_opened=false. No host was
+  launched, profile modified, extension installed, or synthetic live note sent.
+  artifacts/stef-host-setup-live.json retains the receipts. Local client settings
+  and import exports remain Git-ignored and outside the source checkpoint.
+- Actual Cursor/Claude/Copilot/Gemini/Roo/Devin/JetBrains/Cline/Windsurf/Hermes
+  agent tasks, host trust/reload, idle chat switching, and in-IDE pane mounting
+  remain separate tests. This work prepares the connection paths rather than
+  bypassing those client controls. Windows command generation is tested; actual
+  Windows execution and remote/cloud-agent observation remain unverified.

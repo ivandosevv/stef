@@ -29,6 +29,14 @@ The appearance button beside Clear offers Dark, Light, Eye comfort, and System.
 Eye comfort uses a warm background and muted green accents. Your choice is
 saved in this view across reloads and chats; System follows the OS appearance.
 
+stef accompanies the agent across editors. One --enable --client command handles
+Codex, Claude Code, Cursor, VS Code Copilot, Gemini CLI, Roo Code, and Devin
+project configuration. JetBrains AI Assistant (including IntelliJ), Cline,
+Windsurf, Hermes, and other MCP hosts get an import file with client-specific
+instructions. Run stef --list-clients for the available paths. Clients for the
+same project reuse one companion; no stef IDE extension is required. Read
+[client setup and verification](docs/CLIENTS.md) before testing a new host.
+
 This is a personal project outside SAPDevelop, with no SAP or Hyperspace integration.
 
 ## Run in the existing VS Code browser tab

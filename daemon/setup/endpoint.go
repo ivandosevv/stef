@@ -1,64 +1,86 @@
 package setup
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 
 	"github.com/ivandosevv/stef/daemon/mcp"
-	"github.com/pelletier/go-toml/v2"
 )
 
-// Endpoint reuses this root's configured endpoint or selects a free loopback port.
+// Endpoint shares a root's existing managed companion across MCP clients.
 func Endpoint(repo, client string) (string, error) {
+	selected, err := LookupClient(client)
+	if err != nil {
+		return "", err
+	}
 	root, err := os.OpenRoot(repo)
 	if err != nil {
 		return "", err
 	}
 	defer root.Close()
-	clients := []string{client}
-	if client == "codex" {
-		clients = append(clients, "claude")
-	} else {
-		clients = append(clients, "codex")
-	}
-	for _, name := range clients {
-		var document map[string]any
-		path, key := ".mcp.json", "mcpServers"
-		if name == "codex" {
-			path, key = ".codex/config.toml", "mcp_servers"
+	clients := append([]Client{selected}, Clients()...)
+	seen := map[string]bool{}
+	for _, definition := range clients {
+		if seen[definition.ConfigPath] {
+			continue
 		}
-		raw, err := readOptional(root, path)
+		seen[definition.ConfigPath] = true
+		raw, err := readOptional(root, definition.ConfigPath)
 		if err != nil {
-			return "", err
+			if definition.Name == selected.Name {
+				return "", err
+			}
+			continue
 		}
 		if len(raw) == 0 {
 			continue
 		}
-		if name == "codex" {
-			err = toml.Unmarshal(raw, &document)
-		} else {
-			err = json.Unmarshal(raw, &document)
-		}
+		document, err := DecodeClientConfig(raw, definition.Name)
 		if err != nil {
-			return "", fmt.Errorf("invalid existing client configuration: %w", err)
+			if definition.Name == selected.Name {
+				return "", fmt.Errorf("invalid existing %s configuration: %w", definition.Name, err)
+			}
+			continue // An unrelated malformed client must not block this client's setup.
 		}
-		servers, _ := document[key].(map[string]any)
-		server, _ := servers["stef"].(map[string]any)
-		if server == nil {
+		servers, _ := document[definition.ServerKey].(map[string]any)
+		value, exists := servers["stef"]
+		if !exists {
 			continue
 		}
-		args, _ := server["args"].([]any)
-		endpoint := "http://127.0.0.1:4820"
+		server, ok := value.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("existing stef configuration in %s must be an object", definition.ConfigPath)
+		}
+		args, ok := server["args"].([]any)
+		if !ok {
+			return "", fmt.Errorf("existing stef configuration in %s is not a managed stdio server", definition.ConfigPath)
+		}
+		endpoint, trackedRoot := "http://127.0.0.1:4820", ""
 		for i, arg := range args {
-			if arg == "--daemon" && i+1 < len(args) {
-				endpoint, _ = args[i+1].(string)
+			flag, ok := arg.(string)
+			if !ok {
+				return "", fmt.Errorf("stef arguments in %s must be strings", definition.ConfigPath)
 			}
-			if arg == "--repo" && i+1 < len(args) && args[i+1] != repo {
-				return "", fmt.Errorf("existing stef configuration watches a different root")
+			if flag != "--daemon" && flag != "--repo" {
+				continue
 			}
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("incomplete stef arguments in %s", definition.ConfigPath)
+			}
+			value, ok := args[i+1].(string)
+			if !ok || value == "" {
+				return "", fmt.Errorf("invalid stef arguments in %s", definition.ConfigPath)
+			}
+			if flag == "--daemon" {
+				endpoint = value
+			} else {
+				trackedRoot = value
+			}
+		}
+		if trackedRoot != repo {
+			return "", fmt.Errorf("existing stef configuration in %s watches a different root", definition.ConfigPath)
 		}
 		if err := mcp.ValidateEndpoint(endpoint); err != nil {
 			return "", err

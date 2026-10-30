@@ -99,6 +99,25 @@ source/download location to their agent. After that, the chat request can handle
 project setup and launch. The local release archive contains the executable and
 portable skill; public Brew and plugin distribution are not published yet.
 
-Codex and Claude Code have automatic setup adapters. Another client's MCP support
-and configuration schema must be verified before claiming the same one-prompt
-setup there. File observation remains independent of the chosen agent/editor.
+Run stef --list-clients to choose the actual agent, independently of its outer
+IDE. Direct project setup is available for Codex, Claude Code, Cursor's agent,
+VS Code Copilot, Gemini CLI, Roo Code, and Devin. For example:
+
+~~~sh
+stef --enable --client cursor --view ide --repo /absolute/path/to/project
+stef --enable --client claude --view native --repo /absolute/path/to/project
+stef --enable --client intellij --view ide --repo /absolute/path/to/project
+~~~
+
+IntelliJ/JetBrains AI Assistant, Cline, Windsurf, Hermes, and generic clients
+receive an import file at configuration_path and client_configured=false. Merge
+that entry through the client's MCP settings, following next_step. JetBrains
+uses Project scope; Hermes uses mcp_servers in its existing YAML. Setup preserves
+other client settings and reuses one companion for the same project.
+
+Every host retains its own MCP import, trust, and reload controls. A running
+observer does not prove the current agent loaded stef tools. IDE presentation
+requires that host's actual built-in browser capability; a VS Code command is
+not sent to unrelated editors. Use --view native for the macOS companion beside
+other hosts. No stef extension installation is required. See
+[CLIENTS.md](CLIENTS.md) for exact formats and verification boundaries.

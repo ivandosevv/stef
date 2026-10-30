@@ -16,11 +16,28 @@ The Go engine embeds the Svelte renderer and serves it on loopback. IDE mode use
 the existing browser editor; native mode uses macOS WebKit. The observer,
 client adapters, MCP contract, and presentation remain independent.
 
+## Client setup
+
+The client catalog maps canonical names and aliases to documented configuration
+paths, schema keys, and trust/reload instructions. --list-clients has no project
+or process side effects. --enable extends the selected project configuration
+or exports a root-confined import file, then starts or reuses its resident engine.
+Endpoint discovery recognizes every catalog schema, including VS Code JSONC,
+and requires an exact watched-root match. Import receipts explicitly distinguish
+the observer from a client that has not yet imported or connected the server.
+
+Codex, Claude Code, and Cursor have distinct lifecycle parsers. Other hosts
+use the same MCP contract and local watcher without guessed hook formats.
+No client setup installs an IDE extension or writes global user profiles.
+The agent client and outer editor are separate choices; a Codex adapter does
+not imply a VS Code browser-command API.
+
 ## Chat identity and storage
 
 Every event has a session_id. Missing IDs attach to the currently selected chat;
 legacy journal entries belong to local. Codex and Claude adapters hash their
-reported session_id into a stable client-specific chat identity. Start/resume
+reported session_id; Cursor hashes its stable conversation_id. These form
+client-specific chat identities. Start/resume
 selects that identity and emits a fresh snapshot. Repeated prompts in the same
 chat append activity and never clear its history.
 

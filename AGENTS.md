@@ -24,6 +24,10 @@ points, tests, docs, configuration, and cooperating agents' edits. Check pending
 changes once before finishing; leave unknown authors' intent unexplained.
 Never claim that MCP exposes every client's private workflow.
 Only mark individual agent/editor integrations supported after actual verification.
+Choose the MCP setup client for the actual agent rather than its outer IDE.
+The client catalog distinguishes project configuration from import exports;
+never equate either with a real host connection or an opened IDE pane.
+Do not write global client profiles or guess project settings/hook schemas.
 Keep the interface limited to the workflow, brief agent-supplied reasons,
 directed arrows, a compact suggestion field, per-chat Clear, and the requested
 small appearance picker (Dark, Light, Eye comfort, System), and compact Updates

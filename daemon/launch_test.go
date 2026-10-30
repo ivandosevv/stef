@@ -131,6 +131,27 @@ func TestEnableSelectsPortAndOutlivesSetupCommand(t *testing.T) {
 	if ready, err := probeCompanion(context.Background(), result.Endpoint, root); err != nil || !ready {
 		t.Fatalf("resident engine did not outlive setup: %v", err)
 	}
+	for _, name := range []string{"cursor", "intellij"} {
+		data, err := exec.Command(executable, "--enable", "--client", name, "--repo", root, "--view", "ide").Output()
+		if err != nil {
+			t.Fatalf("enable %s: %v", name, err)
+		}
+		var additional struct {
+			Endpoint   string
+			Configured bool   `json:"client_configured"`
+			Connected  bool   `json:"mcp_connected"`
+			Path       string `json:"configuration_path"`
+		}
+		if err := json.Unmarshal(data, &additional); err != nil {
+			t.Fatal(err)
+		}
+		if additional.Endpoint != result.Endpoint || additional.Connected || additional.Configured != (name == "cursor") {
+			t.Fatalf("incorrect shared-client receipt: %s", data)
+		}
+		if _, err := os.Stat(additional.Path); err != nil {
+			t.Fatalf("missing client configuration: %v", err)
+		}
+	}
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		if ready, err := probeCompanion(context.Background(), result.Endpoint, root); err == nil && !ready {

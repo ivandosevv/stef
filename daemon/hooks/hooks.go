@@ -108,7 +108,7 @@ func Send(ctx context.Context, endpoint, clientName string, input io.Reader) err
 	httpClient := &http.Client{Timeout: 750 * time.Millisecond, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	var activity telemetry.Activity
 	base := strings.TrimSuffix(endpoint, "/")
-	if clientName == "claude" || clientName == "codex" {
+	if clientName == "claude" || clientName == "codex" || clientName == "cursor" {
 		request, err := http.NewRequestWithContext(ctx, "GET", base+"/healthz", nil)
 		if err != nil {
 			return err
@@ -118,15 +118,22 @@ func Send(ctx context.Context, endpoint, clientName string, input io.Reader) err
 			return err
 		}
 		var health struct {
-			Repo string `json:"repo"`
+			Repo   string `json:"repo"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
 		}
 		err = json.NewDecoder(response.Body).Decode(&health)
 		response.Body.Close()
 		if err != nil {
 			return err
 		}
+		if clientName == "cursor" && (response.StatusCode != http.StatusOK || health.Name != "stef" || health.Status != "ok") {
+			return fmt.Errorf("endpoint is not a compatible stef companion")
+		}
 		if clientName == "codex" {
 			activity, err = Codex(raw, health.Repo)
+		} else if clientName == "cursor" {
+			activity, err = Cursor(raw, health.Repo)
 		} else {
 			activity, err = Claude(raw, health.Repo)
 		}

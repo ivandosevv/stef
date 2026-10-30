@@ -6,14 +6,26 @@ human-note check-ins when that client supports MCP. Rich tool-level observation
 requires a documented lifecycle adapter; MCP cannot intercept other tool calls
 or universally push a user message into a running turn.
 
-| Client | Available path | Verification boundary |
+| Client | Setup through --client | Verification boundary |
 | --- | --- | --- |
 | Any local coding agent | Local file observer; workflow through reported steps | Watcher tested; meaningful UI steps require MCP or supported hooks |
-| Claude Code | Agent skill, automatic project setup, MCP and lifecycle hooks | Configuration preservation and hook fixtures tested; real Claude session pending |
-| Codex / VS Code panel | Built-in browser presentation, agent skill, MCP autostart and passive lifecycle adapter | IDE-mode resident startup and remembered presentation tested; direct panel tool/hook loading and automatic tab opening pending |
-| Cursor / VS Code | MCP where the selected agent supports it | Native companion requires no editor extension; real agent sessions pending |
-| IntelliJ | Companion beside IDE, MCP where selected agent supports it | No JetBrains plugin required; real agent session pending |
-| Hermes / other clients | Standard MCP and neutral lifecycle endpoint | Client capabilities and real sessions must be verified individually |
+| Codex, including its IDE panels | codex: .codex/config.toml and passive hooks | Actual CLI startup and local bridge verified; automatic panel discovery pending |
+| Claude Code, terminal or IDE | claude: .mcp.json and passive .claude hooks | Project configuration, hook fixtures, and SDK transport tested; real Claude task pending |
+| Cursor local Agent | cursor: .cursor/mcp.json and passive .cursor/hooks.json | Project setup, lifecycle fixtures, and SDK transport tested; real Cursor task/pane pending |
+| VS Code Copilot | vscode or copilot: .vscode/mcp.json | JSONC preservation and SDK transport tested; real Copilot task pending |
+| Gemini CLI | gemini: .gemini/settings.json | Project configuration and SDK transport tested; MCP-only adapter, real task pending |
+| Roo Code | roo: .roo/mcp.json | Project configuration and SDK transport tested; real task pending |
+| Devin Local / Desktop / CLI | devin: .devin/mcp_config.json | Current project format and SDK transport tested; real task pending |
+| JetBrains AI Assistant in IntelliJ and supported JetBrains IDEs | jetbrains or intellij: project-scoped JSON import in AI Assistant settings | Export and SDK transport tested; actual import/task/pane pending |
+| Cline, Windsurf / Cascade | cline or windsurf: generated JSON to merge in the client's MCP settings | Export and SDK transport tested; real tasks pending; Windsurf-specific current docs redirect to Devin |
+| Hermes | hermes: generated mcp_servers mapping to merge into config.yaml | Export and SDK transport tested; actual import/task pending |
+| Other MCP agents | generic: common stdio JSON to adapt/import | Transport tested; the host must support its own MCP schema |
+
+Choose the actual agent rather than the outer editor. Codex running in Cursor
+uses --client codex; Claude Code running in IntelliJ uses --client claude.
+The cursor option is for Cursor's agent and vscode is for Copilot. JetBrains
+targets AI Assistant's documented MCP settings; it does not certify every
+agent in IntelliJ or Junie.
 
 The current native binary runs on macOS ARM64. --headless supports other platforms.
 
@@ -49,16 +61,76 @@ In this checkout, .agents/skills/stef is discoverable by Codex and its VS Code
 panel; .claude/skills/stef points to the same portable skill. Ask **Enable stef for
 this project**, **$stef enable** in Codex, or **/stef enable** in Claude Code.
 
-The skill uses stef --enable --client codex|claude --repo <authorized-root> to
-configure and launch from the current agent. It selects/reuses a loopback port
+The skill uses stef --enable --client <client> --repo <authorized-root> to
+configure and launch from the current agent. stef --list-clients returns all
+documented names, configuration paths, and remaining setup steps. It selects/reuses a loopback port
 and starts a resident engine immediately; no separate agent CLI or stef VSIX is
 needed. In VS Code, add --view ide and open the returned view_url in the existing
 integrated browser. The skill uses a host browser tool if available, otherwise
 supplies the URL; CLI startup alone does not open a tab. The presentation choice
 is remembered independently of the MCP client. Codex loads newly configured MCP
 through Restart extension; Claude Code
-uses its /mcp approval/reconnect controls. Required project/hook trust remains.
+uses its /mcp approval/reconnect controls. Other clients follow next_step in
+the setup result. Required project/hook trust remains.
 See [GETTING_STARTED.md](GETTING_STARTED.md) for the personal VS Code walkthrough.
+
+## Other hosts
+
+~~~sh
+stef --list-clients
+stef --enable --client cursor --view ide --repo /absolute/path/to/project
+stef --enable --client intellij --view ide --repo /absolute/path/to/project
+~~~
+
+Direct adapters extend the documented project file, preserve other servers and
+settings, and reject conflicting stef entries. Codex/Claude/Cursor additionally
+configure passive command hooks. Every client for the same root can reuse the
+existing endpoint, including one originally prepared through an import export.
+
+Import adapters write only .stef/clients/<client>.json in the selected project.
+Their result has client_configured=false and supplies configuration_path plus
+next_step. The observer is already active, but the client has not imported or
+connected the server. Merge only the generated stef entry, preserving existing
+client settings. No global user profile is changed by setup. Hermes uses the
+snake-case mcp_servers key in YAML; merge the mapping rather than appending JSON
+as a second YAML document. JetBrains accepts the common mcpServers JSON through
+Settings > Tools > AI Assistant > Model Context Protocol, with server level
+Project; no guessed .idea configuration is written.
+
+For presentation, use a built-in browser capability that the actual editor
+provides. workbench.action.browser.open is a VS Code command, not a universal
+IDE API. Cursor and JetBrains pane mounting remains unverified. --view native
+opens the macOS companion beside hosts without a built-in browser; --view ide
+returns the ready URL and never installs an extension or claims a pane opened.
+
+VS Code's .vscode/mcp.json is a supported compatibility format. VS Code forwards
+eligible absolute stdio command/args to Copilot's harness. The guided portable
+.mcp.json creation option has an experimental setting; existing portable files
+are still discovered when that setting is off. Gemini and Roo setup enables
+MCP only; their hook payloads are not treated as Claude/Cursor payloads. Devin
+uses the current dedicated .devin/mcp_config.json, not older config*.json files.
+
+Official references: [Cursor](https://cursor.com/docs/mcp.md),
+[Cursor hooks](https://cursor.com/docs/hooks.md),
+[JetBrains AI Assistant](https://www.jetbrains.com/help/ai-assistant/mcp.html),
+[VS Code formats](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
+[Gemini](https://geminicli.com/docs/tools/mcp-server/),
+[Roo](https://docs.roocode.com/features/mcp/using-mcp-in-roo),
+[Cline](https://docs.cline.bot/mcp/configuring-mcp-servers),
+[Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp/),
+[Devin](https://docs.devin.ai/cli/extensibility/mcp/configuration).
+Windsurf's former MCP documentation currently redirects to Devin; the legacy
+Windsurf option remains an explicit import, without claimed project hooks.
+
+## Cursor lifecycle hooks
+
+Cursor's project command hooks report documented conversation and post-tool
+signals without reading transcripts, responses, thoughts, prompts, or raw output.
+Chat IDs derive from conversation_id, retaining the same ID across turns.
+Tracking fails open and ignores stef's own MCP calls. Ambiguous multiroot
+callbacks are skipped; explicit MCP reporting and root-local file observation
+remain available. Hosted Cursor agents cannot be observed automatically through
+this local loopback companion. No permission or model-evaluated hooks are added.
 
 ## Codex
 
@@ -129,5 +201,5 @@ per engine lifetime, and can be offered again after restart. Agents decide how t
 respond within their own client's existing instructions and user authorization.
 
 The earlier integrations/vscode wrapper is an optional presentation experiment.
-It is not required to run stef; the new Chip in flow currently lives in the native
-companion and local preview. No editor extension has been installed globally.
+It is not required to run stef; the current workflow and suggestions live in
+the same renderer across IDE-browser and native presentations.

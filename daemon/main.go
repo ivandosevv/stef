@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -41,15 +40,19 @@ func run() error {
 	ephemeral := flag.Bool("no-persist", false, "Keep history only in memory")
 	bridge := flag.Bool("mcp", false, "Run stdio MCP and launch or reuse a companion for --repo")
 	setupCodex := flag.Bool("setup-codex", false, "Configure project-local Codex MCP and passive lifecycle hooks for --repo")
-	enable := flag.Bool("enable", false, "Enable stef for --client codex or claude and open a resident companion immediately")
+	enable := flag.Bool("enable", false, "Configure the selected MCP client and start a resident companion")
+	listClients := flag.Bool("list-clients", false, "List documented MCP client setup and import options as JSON")
 	view := flag.String("view", "", "Presentation: native or ide; --enable saves the choice for this project")
 	headless := flag.Bool("headless", filepath.Base(os.Args[0]) == "stefd", "Run the local engine without a native window")
 	noAutostart := flag.Bool("no-autostart", false, "Require an already-running root-matched engine in MCP mode")
 	quitAfter := flag.Duration("quit-after", 0, "Optional shutdown duration for demos and smoke tests")
 	hook := flag.Bool("hook", false, "Forward a lifecycle hook from stdin; failures do not block the agent")
-	client := flag.String("client", "generic", "Hook format: generic, claude, or codex")
+	client := flag.String("client", "generic", "MCP setup client (see --list-clients); hook format: generic, claude, codex, cursor")
 	endpoint := flag.String("daemon", "http://127.0.0.1:4820", "Daemon origin for MCP bridge mode")
 	flag.Parse()
+	if *listClients {
+		return json.NewEncoder(os.Stdout).Encode(clientsetup.Clients())
+	}
 	explicitEndpoint := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "daemon" {
@@ -105,9 +108,11 @@ func run() error {
 		if *setupCodex {
 			selectedClient = "codex"
 		}
-		if selectedClient != "codex" && selectedClient != "claude" {
-			return fmt.Errorf("--enable requires --client codex or claude")
+		definition, err := clientsetup.LookupClient(selectedClient)
+		if err != nil {
+			return err
 		}
+		selectedClient = definition.Name
 		if *enable && !explicitEndpoint {
 			value, err := clientsetup.Endpoint(root, selectedClient)
 			if err != nil {
@@ -115,11 +120,8 @@ func run() error {
 			}
 			*endpoint = value
 		}
-		configure := clientsetup.Codex
-		if selectedClient == "claude" {
-			configure = clientsetup.Claude
-		}
-		if err := configure(root, executable, *endpoint); err != nil {
+		configuration, err := clientsetup.Configure(root, executable, *endpoint, selectedClient)
+		if err != nil {
 			return err
 		}
 		if *enable {
@@ -131,15 +133,7 @@ func run() error {
 					return err
 				}
 			}
-			next := "Restart the Codex extension once to load MCP; hook trust is reviewed with /hooks in the Codex CLI."
-			if selectedClient == "claude" {
-				next = "Use Claude Code's /mcp menu to approve/reconnect the project server; restart the session if needed."
-			}
-			result := map[string]any{"observing": true, "client": selectedClient, "repo": root, "endpoint": *endpoint, "view": presentation, "view_url": strings.TrimSuffix(*endpoint, "/") + "/?companion=1", "next_step": next}
-			if presentation == "ide" {
-				result["open_command"] = "workbench.action.browser.open"
-				result["view_opened"] = false // The agent's host opens its built-in browser.
-			}
+			result := enableResult(configuration, root, *endpoint, presentation)
 			return json.NewEncoder(os.Stdout).Encode(result)
 		}
 		fmt.Printf("stef configured in %s/.codex. Start Codex in this trusted project; review the passive hooks once with /hooks.\n", root)
