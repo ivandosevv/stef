@@ -305,3 +305,23 @@ Homebrew tap, or GitHub workflow execution has been created by this work.
   artifacts/stef-file-diff-live.json and .png retain the live evidence; browser
   screenshots include creation/deletion and narrow theme views. Refresh the
   existing stef tab to load the updated renderer.
+
+## GitHub source checkpoint
+
+- Published the working prototype to https://github.com/ivandosevv/stef on its
+  existing master branch. Commit bc833782db342ca02e2e53fada736f4ad7d60178
+  contains the 139 tracked source files, preserving the initial commit and MIT
+  license. GitHub's commit API confirmed the same hash as the local checkout.
+- Reviewed the staged source and ignore rules. Credentials, local MCP/client
+  configuration, runtime histories, test artifacts, generated builds, and Python
+  bytecode stay outside Git. Commit identity is configured only in this personal
+  repository using the owner's GitHub noreply address.
+- The existing OAuth login can push source but lacks workflow permission; the
+  available SSH identity cannot write to this repository. The full CI definition
+  is preserved byte-for-byte in packaging/github-actions/check.yml as a template,
+  with activation instructions beside it. Hosted CI has not run.
+- No functional source changed for this checkpoint. The preceding backend race
+  checks, twenty-three UI unit tests, and twelve browser tests remain its local
+  validation. The resident personal engine remains healthy on port 4825.
+- AGENTS.md records the user's request to commit and push completed, verified
+  milestones as development continues. No background scheduler was installed.
