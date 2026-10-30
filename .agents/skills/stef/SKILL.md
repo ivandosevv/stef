@@ -1,32 +1,34 @@
 ---
 name: stef
-description: Enable/connect stef and report coding progress at its chosen update level. Use when asked to enable stef or visualize a task, and for ongoing work while stef is connected.
+description: Install or enable stef from its GitHub URL in the current project and MCP agent on macOS, Windows, or Linux; report ongoing work at the selected update level.
 ---
 
 Enable stef in the user's current coding client while keeping the agent and its
 IDE in place. No stef editor extension or standalone agent session is needed.
 
-Resolve the project root the user wants observed and honor their exclusions.
-Locate the stef executable on PATH; in the stef source checkout use bin/stef at
-the repository root. If it is missing there, build with make build (make install
-first when dependencies are absent). Outside the checkout, use the user's known
-release/source location; do not invent a public Brew tap or download URL.
-The repository's source bootstrap is an explicit fallback with build prerequisites;
-read docs/CLIENTS.md in that checkout for the current command and limits.
-
-For the Codex panel in VS Code, use its built-in browser editor:
-
-~~~sh
-stef --enable --client codex --view ide --repo "$project_root"
-~~~
+Resolve the project already open or being worked on and honor its exclusions.
+If only a home directory or filesystem root is known, ask for the project folder.
+Keep the user in that project. Read INSTALL.md at the repository root, or fetch
+https://raw.githubusercontent.com/ivandosevv/stef/master/INSTALL.md when only
+the GitHub URL is supplied. Use its OS-specific installer with the actual agent
+as --client and the absolute current project as --repo. The installer defaults
+to the IDE/browser view and returns an absolute executable and setup receipt.
+Reuse a known configured executable when available. Binary installs need no
+Go, Node, or make; source fallback uses scripts/build.py with documented tools.
+Do not redirect the user's work into the stef checkout, install an IDE extension,
+guess an unrelated project, or modify machine-wide client profiles.
 
 Choose --client for the actual agent, independently of its outer IDE: Codex in
 Cursor still uses codex; Claude Code in IntelliJ still uses claude. Run
-stef --list-clients for documented setup paths and their remaining client steps.
+the returned absolute executable with --list-clients for documented setup paths
+and their remaining client steps. Installation already enables the chosen client;
+it does not add stef to PATH.
 Direct project setup is available for codex, claude, cursor, vscode (Copilot),
 opencode, gemini, roo, and devin. intellij aliases jetbrains (AI Assistant); jetbrains,
 windsurf, cline, hermes, and generic export a configuration for explicit import.
-Use --view native for a terminal's native window or when explicitly requested.
+Use --view ide for any OS, including terminal agents. A scoped local browser
+link is valid when the host has no built-in browser. Native is optional when
+available; portable builds fall back to the IDE/browser view.
 Honor the actual editor's documented presentation capabilities and the user's
 choice. Quote the executable and resolved root.
 Enable selects/reuses a loopback port, preserves client settings, writes

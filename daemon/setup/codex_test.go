@@ -24,7 +24,7 @@ command = "other-server"
 	if err := os.WriteFile(hooksPath, []byte(`{"description":"keep this","hooks":{"Stop":[{"hooks":[{"type":"command","command":"custom-command"}]}]}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Codex(root, "/personal/stef", "http://127.0.0.1:4825"); err != nil {
+	if err := Codex(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4825"); err != nil {
 		t.Fatal(err)
 	}
 	config, _ := os.ReadFile(configPath)
@@ -32,7 +32,7 @@ command = "other-server"
 	if !strings.HasPrefix(string(config), original) || !strings.Contains(string(hooks), "custom-command") {
 		t.Fatal("unrelated configuration lost")
 	}
-	if err := Codex(root, "/personal/stef", "http://127.0.0.1:4825"); err != nil {
+	if err := Codex(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4825"); err != nil {
 		t.Fatal(err)
 	}
 	again, _ := os.ReadFile(configPath)
@@ -49,7 +49,7 @@ func TestCodexSetupRefusesConflictsAndOutsideSymlinks(t *testing.T) {
 command = "someone-else"
 `
 	os.WriteFile(path, []byte(original), 0600)
-	if err := Codex(root, "/personal/stef", "http://127.0.0.1:4825"); err == nil {
+	if err := Codex(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4825"); err == nil {
 		t.Fatal("conflicting server replaced")
 	}
 	data, _ := os.ReadFile(path)
@@ -64,7 +64,7 @@ command = "someone-else"
 	if err := os.Symlink(outside, filepath.Join(root, ".codex")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Codex(root, "/personal/stef", "http://127.0.0.1:4825"); err == nil {
+	if err := Codex(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4825"); err == nil {
 		t.Fatal("wrote through outside symlink")
 	}
 	files, _ := os.ReadDir(outside)

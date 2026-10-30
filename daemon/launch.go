@@ -70,7 +70,9 @@ func ensureCompanionMode(ctx context.Context, endpoint, root string, headless, n
 		args = append(args, "--quit-after", lifetime.String())
 	}
 	if headless {
-		args = append(args, "--headless")
+		args = append(args, "--headless", "--view", "ide")
+	} else {
+		args = append(args, "--view", "native")
 	}
 	if ephemeral {
 		args = append(args, "--no-persist")

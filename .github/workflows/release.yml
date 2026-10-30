@@ -1,0 +1,145 @@
+name: Release stef
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, such as 0.3.0'
+        required: true
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/build.py
+      - run: python scripts/test-install.py
+      - run: python scripts/test-install-sh.py
+        if: runner.os != 'Windows'
+      - run: python scripts/test-install-ps1.py
+        if: runner.os == 'Windows'
+      - run: python scripts/test-package-release.py
+      - run: go test ./...
+        working-directory: daemon
+      - run: npm run check
+        working-directory: ui
+      - run: npm test
+        working-directory: ui
+      - run: python scripts/smoke-portable.py
+
+  package:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [darwin, linux, windows]
+        goarch: [amd64, arm64]
+    env:
+      REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re
+          value = os.environ['REQUESTED_VERSION'].removeprefix('v')
+          if not re.fullmatch(r'[0-9]+[.][0-9]+[.][0-9]+(?:-[A-Za-z0-9.-]+)?', value):
+              raise SystemExit('Invalid release version')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              print('RELEASE_VERSION=' + value, file=output)
+          PY
+      - run: python scripts/build.py --goos ${{ matrix.goos }} --goarch ${{ matrix.goarch }} --output "${{ github.workspace }}/artifacts/release-binary"
+      - run: python scripts/package-release.py --goos ${{ matrix.goos }} --goarch ${{ matrix.goarch }} --version "$RELEASE_VERSION" --binary "$GITHUB_WORKSPACE/artifacts/release-binary"
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            artifacts/releases/stef-*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUESTED_VERSION: ${{ inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts/releases
+          merge-multiple: true
+      - name: Publish new release
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, os, re
+          from pathlib import Path
+          value = os.environ['REQUESTED_VERSION'].removeprefix('v')
+          if not re.fullmatch(r'[0-9]+[.][0-9]+[.][0-9]+(?:-[A-Za-z0-9.-]+)?', value):
+              raise SystemExit('Invalid release version')
+          folder = Path('artifacts/releases')
+          checksums = sorted(folder.glob('stef-*.sha256'))
+          if len(checksums) != 6:
+              raise SystemExit('Expected six platform checksums')
+          for sidecar in checksums:
+              digest, name = sidecar.read_text().strip().split('  ', 1)
+              archive = folder / name
+              if archive.name != name or not archive.is_file() or archive.is_symlink() or hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+                  raise SystemExit('Release archive failed checksum verification')
+          (folder / 'checksums.txt').write_text(''.join(p.read_text() for p in checksums))
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              print('RELEASE_TAG=v' + value, file=output)
+          PY
+      - name: Upload verified assets
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists; preserve its assets." >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1 && [ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]; then
+            echo "An existing tag must be released from that exact tag." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" artifacts/releases/* --target "$GITHUB_SHA" --title "stef $RELEASE_TAG" --generate-notes

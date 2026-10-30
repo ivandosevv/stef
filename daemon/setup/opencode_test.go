@@ -17,7 +17,7 @@ func TestOpenCodeSetupUsesDocumentedLocalCommandAndPreservesJSONC(t *testing.T) 
 			if err := os.WriteFile(filepath.Join(root, path), []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
-			result, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "open-code")
+			result, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "open-code")
 			if err != nil || result.ConfigPath != path || !result.Configured || result.Client != "opencode" {
 				t.Fatalf("configuration: %+v %v", result, err)
 			}
@@ -34,10 +34,10 @@ func TestOpenCodeSetupUsesDocumentedLocalCommandAndPreservesJSONC(t *testing.T) 
 			}
 			server := document["mcp"].(map[string]any)["stef"].(map[string]any)
 			command, args, err := StdioCommand(server, "opencode")
-			if err != nil || command != "/personal/stef" || strings.Join(args, "|") != "--mcp|--repo|"+root+"|--daemon|http://127.0.0.1:4837" || server["enabled"] != true || server["args"] != nil {
+			if err != nil || command != absoluteFixture("/personal/stef") || strings.Join(args, "|") != "--mcp|--repo|"+root+"|--daemon|http://127.0.0.1:4837" || server["enabled"] != true || server["args"] != nil {
 				t.Fatalf("command: %+v %v", server, err)
 			}
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode"); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode"); err != nil {
 				t.Fatal(err)
 			}
 			repeated, _ := os.ReadFile(filepath.Join(root, path))
@@ -48,7 +48,7 @@ func TestOpenCodeSetupUsesDocumentedLocalCommandAndPreservesJSONC(t *testing.T) 
 			server["environment"] = map[string]any{"FLAG": "keep"}
 			withPolicy, _ := json.Marshal(document)
 			os.WriteFile(filepath.Join(root, path), withPolicy, 0600)
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode"); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode"); err != nil {
 				t.Fatal(err)
 			}
 			kept, _ := os.ReadFile(filepath.Join(root, path))
@@ -77,7 +77,7 @@ func TestOpenCodeRejectsConflictsAndAmbiguousProjectFiles(t *testing.T) {
 			root := t.TempDir()
 			path := filepath.Join(root, "opencode.jsonc")
 			os.WriteFile(path, []byte(original), 0600)
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode"); err == nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode"); err == nil {
 				t.Fatal("conflicting configuration accepted")
 			}
 			kept, _ := os.ReadFile(path)
@@ -90,7 +90,7 @@ func TestOpenCodeRejectsConflictsAndAmbiguousProjectFiles(t *testing.T) {
 	for _, path := range []string{"opencode.json", "opencode.jsonc"} {
 		os.WriteFile(filepath.Join(root, path), []byte(`{}`), 0600)
 	}
-	if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode"); err == nil {
+	if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode"); err == nil {
 		t.Fatal("ambiguous project configuration accepted")
 	}
 	if _, err := Endpoint(root, "opencode"); err == nil {
@@ -100,7 +100,7 @@ func TestOpenCodeRejectsConflictsAndAmbiguousProjectFiles(t *testing.T) {
 
 func TestOpenCodeNewConfigAndSymlinkConfinement(t *testing.T) {
 	root := t.TempDir()
-	result, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode")
+	result, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode")
 	if err != nil || result.ConfigPath != "opencode.json" {
 		t.Fatalf("new project: %+v %v", result, err)
 	}
@@ -111,7 +111,7 @@ func TestOpenCodeNewConfigAndSymlinkConfinement(t *testing.T) {
 		if err := os.Symlink(outsideFile, filepath.Join(root, path)); err != nil {
 			t.Skip(err)
 		}
-		if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4837", "opencode"); err == nil {
+		if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4837", "opencode"); err == nil {
 			t.Fatal("configuration escaped root")
 		}
 		kept, _ := os.ReadFile(outsideFile)

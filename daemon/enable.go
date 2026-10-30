@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ivandosevv/stef/daemon/companion"
 	clientsetup "github.com/ivandosevv/stef/daemon/setup"
 )
 
@@ -12,6 +13,7 @@ func enableResult(configuration clientsetup.Configuration, root, endpoint, view 
 	result := map[string]any{
 		"observing": true, "client": configuration.Client, "repo": root,
 		"endpoint": endpoint, "view": view,
+		"native_available":   companion.Available(),
 		"view_url":           strings.TrimSuffix(endpoint, "/") + "/?companion=1",
 		"configuration_path": filepath.Join(root, configuration.ConfigPath),
 		"client_configured":  configuration.Configured, "mcp_connected": false,

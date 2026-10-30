@@ -27,6 +27,8 @@
 - [x] Independent workflow/properties scrolling, keyboard and touch containment
 - [x] Local style-effect samples, changed-section exploration, and exact-line suggestions
 - [x] OpenCode project setup and a source-bootstrap command with explicit prerequisites
+- [x] Portable Python setup/build entry and Windows PowerShell installation path
+- [x] Current-project install guide for agents given the GitHub URL
 - [x] Future-only reporting windows without historical explanation backlogs
 - [x] Explicit selected-step AI context requests without automatic enrichment
 - [x] Multi-client project setup and host-specific MCP import exports
@@ -40,10 +42,13 @@
 
 ## Next delivery work
 
-- [ ] Activate the preserved GitHub Actions template with workflow-capable access and verify a hosted run
-- [ ] Publish a public release and Homebrew tap; verify clean-machine setup
+- [x] Active macOS, Windows, and Linux build/test and six-target release workflows
+- [ ] Verify the hosted checks on all three operating systems
+- [ ] Publish the public portable release and verify fresh-project setup
+- [ ] Offer an optional Homebrew tap
 - [ ] Sign/notarize macOS binaries and verify additional Mac architectures
-- [ ] Build/verify Windows and Linux native hosts without requiring IDE plugins
+- [x] Portable browser/IDE runtime with safe native fallback on every OS
+- [ ] Verify Windows/Linux native webview hosts and real agents on each OS
 - [ ] Verify real Claude Code, Codex, Cursor, VS Code, IntelliJ-agent, Hermes, and OpenCode sessions
       (Codex startup verified; full task execution awaits valid CLI authentication)
 - [ ] Add each client's documented lifecycle adapter where available

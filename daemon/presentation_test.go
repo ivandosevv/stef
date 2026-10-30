@@ -8,7 +8,7 @@ import (
 
 func TestPresentationIsRememberedAndCanBeOverridden(t *testing.T) {
 	root := t.TempDir()
-	if got, err := projectPresentation(root, ""); err != nil || got != "native" {
+	if got, err := projectPresentation(root, ""); err != nil || got != "ide" {
 		t.Fatalf("fresh project = %q, %v", got, err)
 	}
 	if err := savePresentation(root, "ide"); err != nil {
@@ -31,6 +31,34 @@ func TestPresentationIsRememberedAndCanBeOverridden(t *testing.T) {
 	}
 	if got, err := projectPresentation(root, "ide"); err != nil || got != "ide" {
 		t.Fatalf("explicit recovery = %q, %v", got, err)
+	}
+}
+
+func TestUnavailableNativePresentationFallsBackToIDE(t *testing.T) {
+	for _, available := range []bool{false, true} {
+		if got := availablePresentation("ide", available); got != "ide" {
+			t.Fatalf("IDE choice changed with native availability: %q", got)
+		}
+		want := "ide"
+		if available {
+			want = "native"
+		}
+		if got := availablePresentation("native", available); got != want {
+			t.Fatalf("native available=%v: got %q, want %q", available, got, want)
+		}
+	}
+}
+
+func TestDaemonExecutableAliasAcceptsWindowsSuffix(t *testing.T) {
+	for _, name := range []string{"stefd", "stefd.exe", "STEFd.EXE"} {
+		if !daemonExecutableName(name) {
+			t.Fatalf("daemon alias was not recognized: %s", name)
+		}
+	}
+	for _, name := range []string{"stef", "stef.exe", "stefd-other.exe"} {
+		if daemonExecutableName(name) {
+			t.Fatalf("ordinary executable was treated as a daemon alias: %s", name)
+		}
 	}
 }
 

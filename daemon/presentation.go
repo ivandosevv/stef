@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -27,7 +28,7 @@ func projectPresentation(repo, requested string) (string, error) {
 	defer root.Close()
 	file, err := root.Open(".stef/presentation.json")
 	if os.IsNotExist(err) {
-		return "native", nil
+		return "ide", nil
 	}
 	if err != nil {
 		return "", err
@@ -38,6 +39,17 @@ func projectPresentation(repo, requested string) (string, error) {
 		return "", fmt.Errorf("invalid stef presentation; use --view native or --view ide to reset it")
 	}
 	return value.View, nil
+}
+
+func availablePresentation(view string, nativeAvailable bool) string {
+	if view == "native" && !nativeAvailable {
+		return "ide"
+	}
+	return view
+}
+
+func daemonExecutableName(name string) bool {
+	return strings.TrimSuffix(strings.ToLower(name), ".exe") == "stefd"
 }
 
 func savePresentation(repo, view string) error {

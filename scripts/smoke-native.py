@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix="native.", dir=root / ".test-workspace")
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
     endpoint = f"http://127.0.0.1:{port}"
-    child = subprocess.Popen([str(root / "bin/stef"), "--mcp", "--repo", fixture,
+    child = subprocess.Popen([str(root / "bin/stef"), "--mcp", "--view", "native", "--repo", fixture,
                               "--daemon", endpoint, "--no-persist"],
                              cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, bufsize=1)
@@ -60,13 +60,17 @@ with tempfile.TemporaryDirectory(prefix="native.", dir=root / ".test-workspace")
         assert result["serverInfo"]["name"] == "stef"
         send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         assert ready.wait(15), "Native Svelte renderer did not mount"
-        note = {"kind": "question", "text": "Does this cover retries?", "target_agent": "native-smoke"}
+        selected = rpc(2, "tools/call", {"name": "set_session", "arguments": {
+            "session_id": "native-smoke-chat", "agent_id": "native-smoke"}})
+        origin = selected["structuredContent"]["session_id"]
+        note = {"kind": "question", "text": "Does this cover retries?",
+                "target_agent": "native-smoke", "session_id": origin}
         request = urllib.request.Request(endpoint + "/api/feedback", data=json.dumps(note).encode(),
                                          headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=3) as response:
             assert response.status == 201
-        result = rpc(2, "tools/call", {"name": "report_event", "arguments": {
-            "agent_id": "native-smoke", "node_name": "main.go", "action": "tested",
+        result = rpc(3, "tools/call", {"name": "report_event", "arguments": {
+            "session_id": origin, "agent_id": "native-smoke", "node_name": "main.go", "action": "tested",
             "summary": "Verified the native companion", "why": "Human notes arrive through a real MCP check-in.", "status": "ready"}})
         assert not result.get("isError"), result
         assert result["structuredContent"]["feedback"][0]["text"] == note["text"]

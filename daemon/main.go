@@ -43,7 +43,7 @@ func run() error {
 	enable := flag.Bool("enable", false, "Configure the selected MCP client and start a resident companion")
 	listClients := flag.Bool("list-clients", false, "List documented MCP client setup and import options as JSON")
 	view := flag.String("view", "", "Presentation: native or ide; --enable saves the choice for this project")
-	headless := flag.Bool("headless", filepath.Base(os.Args[0]) == "stefd", "Run the local engine without a native window")
+	headless := flag.Bool("headless", daemonExecutableName(filepath.Base(os.Args[0])), "Run the local engine without a native window")
 	noAutostart := flag.Bool("no-autostart", false, "Require an already-running root-matched engine in MCP mode")
 	quitAfter := flag.Duration("quit-after", 0, "Optional shutdown duration for demos and smoke tests")
 	hook := flag.Bool("hook", false, "Forward a lifecycle hook from stdin; failures do not block the agent")
@@ -100,6 +100,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	requestedPresentation := presentation
+	presentation = availablePresentation(presentation, companion.Available())
 	if presentation == "ide" {
 		*headless = true
 	}
@@ -138,9 +140,16 @@ func run() error {
 				}
 			}
 			result := enableResult(configuration, root, *endpoint, presentation)
+			if requestedPresentation != presentation {
+				result["requested_view"] = requestedPresentation
+				result["view_note"] = "Open stef in your IDE or existing browser using the worker's scoped view_path."
+			}
 			return json.NewEncoder(os.Stdout).Encode(result)
 		}
-		fmt.Printf("stef configured in %s/.codex. Start Codex in this trusted project; review the passive hooks once with /hooks.\n", root)
+		fmt.Printf("stef is configured for Codex in %s. Reconnect Codex to load stef.\n", root)
+		if configuration.HooksPath != "" {
+			fmt.Println("Review the passive hooks once with /hooks.")
+		}
 		return nil
 	}
 	if *bridge {
@@ -150,9 +159,6 @@ func run() error {
 		}
 		defer stop()
 		return mcp.Run(ctx, *endpoint)
-	}
-	if !*headless && !companion.Available() {
-		return fmt.Errorf("native companion currently supports macOS; use --headless")
 	}
 	// Bind before scanning or opening the journal: a second daemon must not modify it.
 	listener, err := net.Listen("tcp", net.JoinHostPort(*host, *port))

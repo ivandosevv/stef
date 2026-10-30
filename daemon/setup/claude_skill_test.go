@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,7 @@ func TestClaudeSetupInstallsStandaloneSkill(t *testing.T) {
 	if err := os.Mkdir(repo, 0700); err != nil {
 		t.Fatal(err)
 	}
-	executable := "/personal/stef's runtime/bin/stef"
+	executable := absoluteFixture("/personal/stef's runtime/bin/stef")
 	endpoint := "http://127.0.0.1:4827"
 	if err := Claude(repo, executable, endpoint); err != nil {
 		t.Fatal(err)
@@ -26,7 +27,7 @@ func TestClaudeSetupInstallsStandaloneSkill(t *testing.T) {
 	}
 	// The installed skill can reconnect without checkout-relative assumptions,
 	// and shell paths with spaces or quotes remain a single argument.
-	command := shellQuote(executable) + " --enable --client claude --view ide --repo " + shellQuote(repo) + " --daemon " + shellQuote(endpoint)
+	command := reconnectCommand(runtime.GOOS, executable, repo, endpoint)
 	if !strings.Contains(string(first), command) || strings.Contains(string(first), "{{") {
 		t.Fatalf("skill lacks resolved reconnect command: %s", first)
 	}
@@ -51,7 +52,7 @@ func TestClaudeSetupInstallsStandaloneSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(first, second) || !before.ModTime().Equal(after.ModTime()) || after.Mode().Perm() != 0640 {
+	if !bytes.Equal(first, second) || !before.ModTime().Equal(after.ModTime()) || after.Mode().Perm() != before.Mode().Perm() {
 		t.Fatal("repeated setup rewrote the installed skill")
 	}
 	mcpRaw, err := os.ReadFile(filepath.Join(repo, ".mcp.json"))
@@ -98,7 +99,7 @@ func TestClaudeSetupPreservesExistingSkill(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := Claude(repo, "/personal/stef", "http://127.0.0.1:4827"); err != nil {
+			if err := Claude(repo, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(filepath.Join(repo, ClaudeSkillPath))
@@ -158,7 +159,7 @@ func TestClaudeSetupRejectsEscapingOrBrokenSkillLinksBeforeMutating(t *testing.T
 				if err := os.WriteFile(mcpPath, original, 0600); err != nil {
 					t.Fatal(err)
 				}
-				if err := Claude(repo, "/personal/stef", "http://127.0.0.1:4827"); err == nil {
+				if err := Claude(repo, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err == nil {
 					t.Fatal("invalid skill link accepted")
 				}
 				data, err := os.ReadFile(mcpPath)
@@ -206,7 +207,7 @@ func TestClaudeSetupRejectsMalformedSkillPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := Claude(repo, "/personal/stef", "http://127.0.0.1:4827"); err == nil {
+			if err := Claude(repo, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err == nil {
 				t.Fatal("malformed skill accepted")
 			}
 			if _, err := os.Stat(filepath.Join(repo, ".mcp.json")); !os.IsNotExist(err) {

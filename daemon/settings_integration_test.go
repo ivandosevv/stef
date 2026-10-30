@@ -122,7 +122,7 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			case "streamable-http":
 				connection = &sdk.StreamableClientTransport{Endpoint: server.URL + "/mcp"}
 			case "stdio":
-				executable, err := filepath.Abs("../bin/stef")
+				executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -16,7 +16,7 @@ import (
 
 // These are real SDK transports consuming generated configs, not real host sessions.
 func TestGeneratedClientCommandsConnectThroughTheSameMCP(t *testing.T) {
-	executable, err := filepath.Abs("../bin/stef")
+	executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestGeneratedClientCommandsConnectThroughTheSameMCP(t *testing.T) {
 }
 
 func TestClientListingDoesNotNeedAProjectOrLaunchACompanion(t *testing.T) {
-	executable, err := filepath.Abs("../bin/stef")
+	executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 func TestAllClientsShareAnExistingProjectEndpoint(t *testing.T) {
 	root := t.TempDir()
 	const endpoint = "http://127.0.0.1:4837"
-	if _, err := Configure(root, "/personal/stef", endpoint, "gemini"); err != nil {
+	if _, err := Configure(root, absoluteFixture("/personal/stef"), endpoint, "gemini"); err != nil {
 		t.Fatal(err)
 	}
 	for _, client := range Clients() {
@@ -24,7 +24,7 @@ func TestAllClientsShareAnExistingProjectEndpoint(t *testing.T) {
 
 func TestImportedConfigurationCanReuseItsEndpoint(t *testing.T) {
 	root := t.TempDir()
-	if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4838", "intellij"); err != nil {
+	if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4838", "intellij"); err != nil {
 		t.Fatal(err)
 	}
 	found, err := Endpoint(root, "cursor")

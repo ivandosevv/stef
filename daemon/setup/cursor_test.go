@@ -21,7 +21,7 @@ func TestCursorSetupPreservesProjectSettingsAndInstallsOnlyPostHooks(t *testing.
 			t.Fatal(err)
 		}
 	}
-	executable, endpoint := "/personal/stef bin's/stef", "http://127.0.0.1:4827"
+	executable, endpoint := absoluteFixture("/personal/stef bin's/stef"), "http://127.0.0.1:4827"
 	if err := Cursor(root, executable, endpoint); err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,8 @@ func TestCursorConflictsAndInvalidHooksLeaveExistingFilesUntouched(t *testing.T)
 		"unsupported-hooks-version": {"version": 2, "hooks": map[string]any{}},
 		"invalid-hooks-group":       {"version": 1, "hooks": map[string]any{"postToolUse": true}},
 		"old-stef-hook":             {"version": 1, "hooks": map[string]any{"stop": []any{map[string]any{"command": "old-stef --hook --client cursor --daemon http://127.0.0.1:1111"}}}},
-		"model-hook-type":           {"version": 1, "hooks": map[string]any{"stop": []any{map[string]any{"command": cursorHookCommand(runtime.GOOS, "/personal/stef", "http://127.0.0.1:4827"), "type": "prompt"}}}},
-		"invalid-own-matcher":       {"version": 1, "hooks": map[string]any{"stop": []any{map[string]any{"command": cursorHookCommand(runtime.GOOS, "/personal/stef", "http://127.0.0.1:4827"), "matcher": true}}}},
+		"model-hook-type":           {"version": 1, "hooks": map[string]any{"stop": []any{map[string]any{"command": cursorHookCommand(runtime.GOOS, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"), "type": "prompt"}}}},
+		"invalid-own-matcher":       {"version": 1, "hooks": map[string]any{"stop": []any{map[string]any{"command": cursorHookCommand(runtime.GOOS, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"), "matcher": true}}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
@@ -92,7 +92,7 @@ func TestCursorConflictsAndInvalidHooksLeaveExistingFilesUntouched(t *testing.T)
 			raw, _ := json.Marshal(document)
 			path := filepath.Join(root, ".cursor", file)
 			os.WriteFile(path, raw, 0600)
-			if err := Cursor(root, "/personal/stef", "http://127.0.0.1:4827"); err == nil {
+			if err := Cursor(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err == nil {
 				t.Fatal("unsafe configuration accepted")
 			}
 			after, _ := os.ReadFile(path)
@@ -115,14 +115,14 @@ func TestCursorSetupDoesNotEscapeProjectRoot(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, ".cursor")); err != nil {
 		t.Fatal(err)
 	}
-	if err := Cursor(root, "/personal/stef", "http://127.0.0.1:4827"); err == nil {
+	if err := Cursor(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err == nil {
 		t.Fatal("symlink escape accepted")
 	}
 	entries, _ := os.ReadDir(outside)
 	if len(entries) != 0 {
 		t.Fatal("outside configuration written")
 	}
-	if err := Cursor(t.TempDir(), "/personal/stef", "http://example.com"); err == nil {
+	if err := Cursor(t.TempDir(), absoluteFixture("/personal/stef"), "http://example.com"); err == nil {
 		t.Fatal("remote daemon accepted")
 	}
 }

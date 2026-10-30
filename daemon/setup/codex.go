@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,6 +24,10 @@ type codexServer struct {
 }
 
 func Codex(repo, executable, endpoint string) error {
+	return codexForPlatform(repo, executable, endpoint, runtime.GOOS)
+}
+
+func codexForPlatform(repo, executable, endpoint, platform string) error {
 	if err := mcp.ValidateEndpoint(endpoint); err != nil {
 		return err
 	}
@@ -35,17 +40,23 @@ func Codex(repo, executable, endpoint string) error {
 	if err != nil {
 		return err
 	}
-	hooks, err := readOptional(root, ".codex/hooks.json")
-	if err != nil {
-		return err
+	var hooks, nextHooks []byte
+	if platform != "windows" {
+		hooks, err = readOptional(root, ".codex/hooks.json")
+		if err != nil {
+			return err
+		}
 	}
 	nextConfig, err := configureServer(config, codexServer{Command: executable, Args: []string{"--mcp", "--repo", repo, "--daemon", endpoint}, Enabled: true, StartupTimeout: 20})
 	if err != nil {
 		return err
 	}
-	nextHooks, err := configureHooks(hooks, shellQuote(executable)+" --hook --client codex --daemon "+shellQuote(endpoint))
-	if err != nil {
-		return err
+	// Windows uses the same MCP contract without assuming a hook command shell.
+	if platform != "windows" {
+		nextHooks, err = configureHooks(hooks, shellQuote(executable)+" --hook --client codex --daemon "+shellQuote(endpoint))
+		if err != nil {
+			return err
+		}
 	}
 	if err := root.MkdirAll(".codex", 0700); err != nil {
 		return err

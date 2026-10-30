@@ -1,14 +1,13 @@
 # Brew delivery preparation
 
-The current runtime is a single macOS ARM64 executable. make release creates an
-unsigned archive in artifacts/, a SHA256 file, and Formula/stef.rb with the exact
-checksum and a local file URL. Nothing is uploaded or globally installed.
+stef packages macOS, Windows, and Linux on x64 and ARM64. Portable installation
+uses install.py, so Brew is optional. make release packages the current build in
+artifacts/releases with SHA256 checksums; it does not publish anything.
 
-For a release owner, scripts/package-release.py --url-prefix <published-base-url>
-can regenerate the recipe to point at that archive's eventual public location.
-A Homebrew tap and release publication are separate future steps. The homepage
-in the recipe is the intended repository location, not a claim it already exists.
+For an optional macOS ARM64 recipe, run scripts/package-release.py with
+--brew-formula --url-prefix <published-base-url>. Verify its URL and checksum
+before publishing a tap. The generated recipe stays separate from the portable
+Windows/Linux/macOS archives.
 
-A public brew install stef command is not available yet. Current working setup
-uses the local build followed by one command, or the MCP configuration that starts
-the native companion. The archive contains no Node runtime or IDE plugin.
+A public brew install stef command is not available yet. Release archives bundle
+the renderer and need no Node runtime or IDE plugin.

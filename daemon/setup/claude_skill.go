@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"text/template"
 )
 
@@ -71,12 +73,30 @@ func renderClaudeSkill(repo, executable, endpoint string) ([]byte, error) {
 		Root:          strconv.Quote(repo),
 		Executable:    strconv.Quote(executable),
 		Endpoint:      strconv.Quote(endpoint),
-		EnableCommand: shellQuote(executable) + " --enable --client claude --view ide --repo " + shellQuote(repo) + " --daemon " + shellQuote(endpoint),
-		ReportCommand: shellQuote(executable) + " --report-changes --repo " + shellQuote(repo) + " --daemon " + shellQuote(endpoint),
+		EnableCommand: reconnectCommand(runtime.GOOS, executable, repo, endpoint),
+		ReportCommand: reportCommand(runtime.GOOS, executable, repo, endpoint),
 	}
 	var output bytes.Buffer
 	if err := tmpl.Execute(&output, data); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+func shellInvocation(platform, executable string) (string, func(string) string) {
+	if platform == "windows" {
+		quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+		return "& " + quote(executable), quote
+	}
+	return shellQuote(executable), shellQuote
+}
+
+func reconnectCommand(platform, executable, repo, endpoint string) string {
+	command, quote := shellInvocation(platform, executable)
+	return command + " --enable --client claude --view ide --repo " + quote(repo) + " --daemon " + quote(endpoint)
+}
+
+func reportCommand(platform, executable, repo, endpoint string) string {
+	command, quote := shellInvocation(platform, executable)
+	return command + " --report-changes --repo " + quote(repo) + " --daemon " + quote(endpoint)
 }

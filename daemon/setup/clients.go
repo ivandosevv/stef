@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ivandosevv/stef/daemon/mcp"
@@ -48,7 +49,25 @@ var clientCatalog = []Client{
 	{Name: "generic", Label: "Other MCP clients", SetupMode: "import", ConfigPath: ".stef/clients/generic.json", ServerKey: "mcpServers", NextStep: "Import or merge the generated stdio configuration in your agent's MCP settings, adapting its top-level key if required, and reconnect. The generated file has not been imported into the client.", DocsURL: "https://modelcontextprotocol.io/docs/develop/connect-local-servers"},
 }
 
-func Clients() []Client { return append([]Client(nil), clientCatalog...) }
+func Clients() []Client {
+	clients := append([]Client(nil), clientCatalog...)
+	for index, client := range clients {
+		clients[index] = platformClient(client, runtime.GOOS)
+	}
+	return clients
+}
+
+func platformClient(client Client, platform string) Client {
+	if platform == "windows" && (client.Name == "codex" || client.Name == "claude") {
+		client.HooksPath = ""
+		if client.Name == "codex" {
+			client.NextStep = "Reconnect stef in Codex to load MCP. File explanations use stef's MCP tools on Windows."
+		} else {
+			client.NextStep = "Use Claude Code's /mcp menu to approve/reconnect stef. File explanations use stef's MCP tools on Windows."
+		}
+	}
+	return client
+}
 
 func LookupClient(name string) (Client, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
@@ -58,7 +77,7 @@ func LookupClient(name string) (Client, error) {
 	}
 	for _, client := range clientCatalog {
 		if client.Name == name {
-			return client, nil
+			return platformClient(client, runtime.GOOS), nil
 		}
 	}
 	return Client{}, fmt.Errorf("unknown client %q; use --list-clients for available setup paths", name)

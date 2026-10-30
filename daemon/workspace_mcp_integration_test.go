@@ -39,7 +39,7 @@ func workspaceClient(t *testing.T, ctx context.Context, transport, endpoint, roo
 	case "http":
 		connection = &sdk.StreamableClientTransport{Endpoint: endpoint + "/mcp"}
 	case "stdio":
-		executable, err := filepath.Abs("../bin/stef")
+		executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 		if err != nil {
 			t.Fatal(err)
 		}

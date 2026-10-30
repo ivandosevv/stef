@@ -46,7 +46,7 @@ func TestJSONClientSetupPreservesSettingsAndPolicies(t *testing.T) {
 			if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 				t.Fatal(err)
 			}
-			result, err := Configure(root, "/personal/stef/bin/stef", "http://127.0.0.1:4827", name)
+			result, err := Configure(root, absoluteFixture("/personal/stef/bin/stef"), "http://127.0.0.1:4827", name)
 			if err != nil || !result.Configured || result.Client != name || result.ConfigPath != client.ConfigPath || result.HooksPath != "" {
 				t.Fatalf("configure: %#v %v", result, err)
 			}
@@ -65,13 +65,13 @@ func TestJSONClientSetupPreservesSettingsAndPolicies(t *testing.T) {
 			server := servers["stef"].(map[string]any)
 			args, _ := json.Marshal(server["args"])
 			expected, _ := json.Marshal([]string{"--mcp", "--repo", root, "--daemon", "http://127.0.0.1:4827"})
-			if server["command"] != "/personal/stef/bin/stef" || !bytes.Equal(args, expected) {
+			if server["command"] != absoluteFixture("/personal/stef/bin/stef") || !bytes.Equal(args, expected) {
 				t.Fatalf("incorrect shared stdio setup: %#v", server)
 			}
 			if name == "vscode" && server["type"] != "stdio" {
 				t.Fatal("VS Code requires its own type field")
 			}
-			if _, err := Configure(root, "/personal/stef/bin/stef", "http://127.0.0.1:4827", name); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef/bin/stef"), "http://127.0.0.1:4827", name); err != nil {
 				t.Fatal(err)
 			}
 			second, _ := os.ReadFile(path)
@@ -83,7 +83,7 @@ func TestJSONClientSetupPreservesSettingsAndPolicies(t *testing.T) {
 			server["env"] = map[string]any{"CUSTOM_FLAG": "kept"}
 			withPolicy, _ := json.Marshal(document)
 			os.WriteFile(path, withPolicy, 0600)
-			if _, err := Configure(root, "/personal/stef/bin/stef", "http://127.0.0.1:4827", name); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef/bin/stef"), "http://127.0.0.1:4827", name); err != nil {
 				t.Fatal(err)
 			}
 			preserved, _ := os.ReadFile(path)
@@ -99,7 +99,7 @@ func TestImportClientsExportTheirOwnSchemaWithoutProfileWrites(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			client, _ := LookupClient(name)
-			result, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", name)
+			result, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", name)
 			if err != nil || result.Configured || !strings.HasPrefix(result.ConfigPath, ".stef/clients/") || result.NextStep == "" {
 				t.Fatalf("import result falsely claims loading: %#v %v", result, err)
 			}
@@ -114,7 +114,7 @@ func TestImportClientsExportTheirOwnSchemaWithoutProfileWrites(t *testing.T) {
 			if name == "hermes" && document["mcpServers"] != nil {
 				t.Fatal("Hermes does not use camel-case mcpServers")
 			}
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", name); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", name); err != nil {
 				t.Fatal(err)
 			}
 			repeated, _ := os.ReadFile(filepath.Join(root, result.ConfigPath))
@@ -144,7 +144,7 @@ func TestClientSetupFailuresPreserveFiles(t *testing.T) {
 				os.MkdirAll(filepath.Dir(path), 0700)
 				original := []byte(strings.ReplaceAll(body, "KEY", client.ServerKey))
 				os.WriteFile(path, original, 0600)
-				if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", name); err == nil {
+				if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", name); err == nil {
 					t.Fatal("invalid or conflicting settings accepted")
 				}
 				data, _ := os.ReadFile(path)
@@ -159,10 +159,10 @@ func TestClientSetupFailuresPreserveFiles(t *testing.T) {
 func TestClientSetupRefusesUnsupportedNamesInvalidEndpointsAndEscapes(t *testing.T) {
 	root := t.TempDir()
 	for _, input := range []struct{ name, executable, endpoint string }{
-		{"unknown", "/personal/stef", "http://127.0.0.1:4827"},
-		{"../escape", "/personal/stef", "http://127.0.0.1:4827"},
+		{"unknown", absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"},
+		{"../escape", absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"},
 		{"gemini", "relative-stef", "http://127.0.0.1:4827"},
-		{"gemini", "/personal/stef", "https://external.example.com"},
+		{"gemini", absoluteFixture("/personal/stef"), "https://external.example.com"},
 	} {
 		if _, err := Configure(root, input.executable, input.endpoint, input.name); err == nil {
 			t.Fatalf("unsafe setup accepted: %#v", input)
@@ -180,7 +180,7 @@ func TestClientSetupRefusesUnsupportedNamesInvalidEndpointsAndEscapes(t *testing
 			if err := os.Symlink(outside, filepath.Join(root, parent)); err != nil {
 				t.Skip(err)
 			}
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", name); err == nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", name); err == nil {
 				t.Fatal("configuration escaped the selected root")
 			}
 			entries, _ := os.ReadDir(outside)
@@ -205,7 +205,7 @@ func TestVSCodeJSONCInsertionPreservesCommentsAndExactSettings(t *testing.T) {
 			path := filepath.Join(root, ".vscode/mcp.json")
 			os.MkdirAll(filepath.Dir(path), 0700)
 			os.WriteFile(path, []byte(original), 0600)
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", "vscode"); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", "vscode"); err != nil {
 				t.Fatal(err)
 			}
 			next, _ := os.ReadFile(path)
@@ -221,7 +221,7 @@ func TestVSCodeJSONCInsertionPreservesCommentsAndExactSettings(t *testing.T) {
 			if suffix < 0 || !bytes.Equal(next[len(next)-suffix:], []byte(original[prefix:])) {
 				t.Fatal("existing JSONC source/comments were rewritten")
 			}
-			if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", "vscode"); err != nil {
+			if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", "vscode"); err != nil {
 				t.Fatal(err)
 			}
 			repeated, _ := os.ReadFile(path)
@@ -239,7 +239,7 @@ func TestVSCodeJSONCInsertionPreservesCommentsAndExactSettings(t *testing.T) {
 		path := filepath.Join(root, ".vscode/mcp.json")
 		os.MkdirAll(filepath.Dir(path), 0700)
 		os.WriteFile(path, []byte(original), 0600)
-		if _, err := Configure(root, "/personal/stef", "http://127.0.0.1:4827", "vscode"); err == nil {
+		if _, err := Configure(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827", "vscode"); err == nil {
 			t.Fatalf("unsafe JSONC accepted: %s", original)
 		}
 		data, _ := os.ReadFile(path)

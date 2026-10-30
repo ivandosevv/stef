@@ -7,11 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 
 	"github.com/ivandosevv/stef/daemon/mcp"
 )
 
 func Claude(repo, executable, endpoint string) error {
+	return claudeForPlatform(repo, executable, endpoint, runtime.GOOS)
+}
+
+func claudeForPlatform(repo, executable, endpoint, platform string) error {
 	if err := mcp.ValidateEndpoint(endpoint); err != nil {
 		return err
 	}
@@ -32,17 +37,24 @@ func Claude(repo, executable, endpoint string) error {
 	if err != nil {
 		return err
 	}
-	settings, err := readOptional(root, ".claude/settings.local.json")
-	if err != nil {
-		return err
+	var settings, nextSettings []byte
+	if platform != "windows" {
+		settings, err = readOptional(root, ".claude/settings.local.json")
+		if err != nil {
+			return err
+		}
 	}
 	next, err := configureClaudeServer(raw, executable, repo, endpoint)
 	if err != nil {
 		return err
 	}
-	nextSettings, err := configureHookEvents(settings, shellQuote(executable)+" --hook --client claude --daemon "+shellQuote(endpoint), []string{"SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop"}, false)
-	if err != nil {
-		return err
+	// Git Bash and PowerShell use different command forms. MCP reporting works
+	// without either shell or an unverified version-specific hook handler.
+	if platform != "windows" {
+		nextSettings, err = configureHookEvents(settings, shellQuote(executable)+" --hook --client claude --daemon "+shellQuote(endpoint), []string{"SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop"}, false)
+		if err != nil {
+			return err
+		}
 	}
 	if err := root.MkdirAll(".claude", 0700); err != nil {
 		return err

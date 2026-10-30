@@ -41,7 +41,7 @@ func TestCompanionReuseRequiresMatchingRootAndVersion(t *testing.T) {
 }
 
 func TestStdioAutoStartsAndStopsOwnedEngine(t *testing.T) {
-	executable, err := filepath.Abs("../bin/stef")
+	executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestStdioAutoStartsAndStopsOwnedEngine(t *testing.T) {
 }
 
 func TestEnableSelectsPortAndOutlivesSetupCommand(t *testing.T) {
-	executable, err := filepath.Abs("../bin/stef")
+	executable, err := filepath.Abs(filepath.Join("..", "bin", testBinaryName()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,14 +18,14 @@ func TestClaudeSetupPreservesSettingsAndSharesCodexEndpoint(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := Codex(root, "/personal/stef", "http://127.0.0.1:4827"); err != nil {
+	if err := Codex(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err != nil {
 		t.Fatal(err)
 	}
 	endpoint, err := Endpoint(root, "claude")
 	if err != nil || endpoint != "http://127.0.0.1:4827" {
 		t.Fatalf("did not share project endpoint: %s %v", endpoint, err)
 	}
-	if err := Claude(root, "/personal/stef", endpoint); err != nil {
+	if err := Claude(root, absoluteFixture("/personal/stef"), endpoint); err != nil {
 		t.Fatal(err)
 	}
 	first, _ := os.ReadFile(path)
@@ -38,7 +38,7 @@ func TestClaudeSetupPreservesSettingsAndSharesCodexEndpoint(t *testing.T) {
 	if settings["permissions"] == nil || !strings.Contains(string(first), "existing-hook") {
 		t.Fatal("unrelated settings overwritten")
 	}
-	if err := Claude(root, "/personal/stef", endpoint); err != nil {
+	if err := Claude(root, absoluteFixture("/personal/stef"), endpoint); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(path)
@@ -52,7 +52,7 @@ func TestClaudeConflictPreservesExistingFiles(t *testing.T) {
 	path := filepath.Join(root, ".mcp.json")
 	original := `{"mcpServers":{"stef":{"command":"custom-server","args":[]}}}`
 	os.WriteFile(path, []byte(original), 0600)
-	if err := Claude(root, "/personal/stef", "http://127.0.0.1:4827"); err == nil {
+	if err := Claude(root, absoluteFixture("/personal/stef"), "http://127.0.0.1:4827"); err == nil {
 		t.Fatal("conflicting entry replaced")
 	}
 	data, _ := os.ReadFile(path)

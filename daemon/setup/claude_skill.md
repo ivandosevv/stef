@@ -8,9 +8,10 @@ stef visualizes this agent's work locally. This skill is configured for project
 Use these exact paths even when Claude starts elsewhere. Observe only this
 project; select another project only when the user explicitly requests it.
 
-To enable or reconnect the companion for this project:
+To enable or reconnect the companion for this project, use this command in
+the current platform's shell (PowerShell on Windows, POSIX elsewhere):
 
-~~~sh
+~~~text
 {{.EnableCommand}}
 ~~~
 
@@ -38,6 +39,9 @@ Receipts include workspace_name and view_path. Names such as Quiet Fox 2487
 are generated locally from word lists and numbers and remain stable on resume
 and Clear, without AI calls. Then call get_state once at task start and follow
 update_mode and reporting_instructions.
+Native Windows setup uses MCP without changing Claude's passive hook settings.
+Use changed_paths plus the bounded MCP check-in after edits when no trusted
+hook supplies exact revision IDs.
 Each agent and subagent has a private workspace by default. Give subagents their
 own unique agent_id and set_session call; MCP cannot distinguish anonymous
 workers sharing a transport. Do not give them the parent's returned session_id.
@@ -72,7 +76,7 @@ mean the client has not connected; do not invent explanations or claim success.
 For exact pending IDs already obtained from stef, the same report_changes JSON
 can be passed through stdin to the configured executable:
 
-~~~sh
+~~~text
 {{.ReportCommand}}
 ~~~
 

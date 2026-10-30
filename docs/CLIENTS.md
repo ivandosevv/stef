@@ -24,14 +24,19 @@ or universally push a user message into a running turn.
 
 Choose the actual agent rather than the outer editor. Codex running in Cursor
 uses --client codex; Claude Code running in IntelliJ uses --client claude.
-The cursor option is for Cursor's agent and vscode is for Copilot. JetBrains
+The cursor option is for Cursor's agent and vscode is for Copilot.
+Native Windows Codex and Claude setup installs MCP without changing passive
+hook settings. Those agents use exact saved paths through MCP to explain new
+revisions; stef does not guess their hook shell. Cursor retains its documented
+PowerShell hook configuration on Windows. JetBrains
 targets AI Assistant's documented MCP settings; it does not certify every
 agent in IntelliJ or Junie.
 
-The current native archive targets macOS ARM64. Headless Linux and Windows amd64 source builds
-compile with CGO disabled. Those binaries have not been run on their target OS;
-compiling a target is distinct from verifying that target's editor/client. No public release asset or Homebrew tap is
-available yet, so `brew install stef` is not a working public installation command.
+Portable binary packages target macOS, Windows, and Linux on amd64 and arm64.
+The local renderer and MCP tools are shared across platforms. The default view
+uses the IDE's built-in browser or a scoped localhost link. macOS native WebKit
+remains an optional CGO source build; unsupported native requests fall back to
+the portable view. A target build is distinct from a verified real agent task.
 
 Workflow histories are scoped to stable chat IDs. Codex/Claude lifecycle signals
 select new/resumed chats when loaded; otherwise bind through MCP set_session
@@ -45,39 +50,36 @@ client never reports cannot select a saved workflow automatically.
 Additional native hosts are planned. Hosted or remote agent execution needs an
 explicit event bridge and cannot be observed through local files alone.
 
-## One-command source setup
+## Install through the current agent
 
-With Git, Go 1.25+, Node 22.12+, npm, Python 3, and make already available, a checkout
-can build and enable the selected agent with one command:
+Tell the agent: Install https://github.com/ivandosevv/stef for this project and
+enable it. [INSTALL.md](../INSTALL.md) gives the actual setup procedure. The agent
+chooses its own MCP client and the project's absolute path, downloads the
+platform installer, and keeps the user working in that project.
 
-~~~sh
-./scripts/bootstrap.sh --client opencode --repo /absolute/path/to/personal/project
-~~~
+`install.py` is a Python 3 entry for macOS, Linux, or Windows. Windows also has
+`scripts/bootstrap.ps1`; macOS/Linux retain `scripts/bootstrap.sh`. Installers
+prefer matching portable release binaries and verify their checksums. Source
+fallback uses Git, Go 1.25+, Node 22.12+, npm, and Python 3 through
+`scripts/build.py`, without Bash or make. No machine-wide toolchains, PATH
+entries, or IDE extensions are installed.
 
-For a new checkout, download the same published script before running it, or use
-this single shell invocation after reviewing the source:
+The project-scoped runtime lives under `<project>/.stef/runtime`, which the
+observer ignores. `--source-dir` can reuse an explicitly chosen checkout without
+pulling, resetting, or overwriting its source edits. Setup preserves other
+client entries and returns the real executable, endpoint, and remaining client
+steps. Existing conflicting stef entries require review.
 
-~~~sh
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/ivandosevv/stef/master/scripts/bootstrap.sh)" -- --client opencode --repo /absolute/path/to/personal/project
-~~~
+Default `--view ide` starts the portable engine. After the client loads stef,
+the agent binds with `set_session` and opens endpoint plus its returned
+`view_path` using the current host's actual browser tool. A configured server,
+a ready engine, and an opened view are separate results. Clients that only
+support manual import still use their normal MCP settings controls.
 
-This is a source bootstrap, not a prebuilt installer. The default source lives in
-`<project>/.stef/runtime/stef`, which the observer ignores. `--source-dir` can
-instead reuse an explicitly chosen stef checkout; existing checkouts are never
-pulled, reset, or overwritten. Builds remain in that checkout. No toolchain,
-IDE extension, global client profile, or PATH entry is installed. macOS native
-builds also require Xcode Command Line Tools. `--build-only` builds without
-configuring or launching the companion. The eight isolated bootstrap tests use
-fake download/build commands, so they verify orchestration and confinement rather
-than a clean-machine installation with downloaded toolchains.
-
-The default `--view ide` starts the headless engine and returns its local URL.
-Opening that URL inside an editor still uses that editor's built-in browser.
-Use `--view native` on a supported macOS host to open the companion. The chosen
-MCP client must load/trust the new project entry, or import its generated entry,
-using its own controls. The current running model cannot acquire tools merely
-because a config file was saved. A terminal is a presentation environment; pick
-its actual agent, such as `codex`, `claude`, `hermes`, or `opencode`.
+A terminal is a host; choose its actual agent, such as `codex`, `claude`,
+`hermes`, or `opencode`. Remote agent machines need the companion on that
+machine and an explicit connection to the developer's view. The local install
+flow does not automatically bridge different machines.
 
 ## Common stdio configuration
 
