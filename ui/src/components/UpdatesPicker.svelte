@@ -44,7 +44,7 @@
   <button class="updates-trigger" bind:this={trigger} onclick={toggle} disabled={!connected || saving} aria-label="Updates" title={'Updates: ' + label} aria-haspopup="menu" aria-expanded={open}>{label}<span aria-hidden="true">⌄</span></button>
   {#if open}
     <div class="updates-menu" bind:this={menu} role="menu" aria-label="Updates" tabindex="-1" onkeydown={navigate}>
-      {#each options as option}
+      {#each options as option (option.value)}
         <button class="updates-option" role="menuitemradio" aria-label={option.label} aria-describedby={'stef-updates-' + option.value + '-detail'} aria-checked={mode === option.value} tabindex={mode === option.value ? 0 : -1} disabled={saving || !connected} onclick={() => pick(option.value)}>
           <span>{option.label}<span aria-hidden="true">{mode === option.value ? '✓' : ''}</span></span>
           <small id={'stef-updates-' + option.value + '-detail'}>{option.detail}</small>

@@ -28,7 +28,7 @@
   <button class="design-trigger" bind:this={trigger} onclick={toggle} aria-label="Design" title={'Design: ' + (design === 'minimal' ? 'Minimal' : 'Interactive')} aria-haspopup="menu" aria-expanded={open}><span aria-hidden="true">{design === 'minimal' ? '☷' : '◇'}</span></button>
   {#if open}
     <div class="design-menu" bind:this={menu} role="menu" aria-label="Design" tabindex="-1" onkeydown={navigate}>
-      {#each options as option}
+      {#each options as option (option.value)}
         <button class="design-option" role="menuitemradio" aria-label={option.label} aria-describedby={'stef-design-' + option.value} aria-checked={design === option.value} tabindex={design === option.value ? 0 : -1} onclick={() => { onchange(option.value); close(); }}>
           <span>{option.label}<span aria-hidden="true">{design === option.value ? '✓' : ''}</span></span><small id={'stef-design-' + option.value}>{option.detail}</small>
         </button>

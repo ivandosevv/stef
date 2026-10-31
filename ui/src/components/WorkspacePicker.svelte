@@ -52,7 +52,7 @@
   {#if open}
     <div class="workspace-menu" bind:this={menu} role="dialog" aria-label="Workspaces and sharing" tabindex="-1" onkeydown={navigate}>
       <div class="workspace-list">
-        {#each choices as workspace}
+        {#each choices as workspace (workspace.workspace_id)}
           <button class="workspace-choice" aria-label={workspaceName(workspace)} aria-pressed={workspace.workspace_id === origin} title={workspaceName(workspace) + ' · ' + (workspace.shared ? 'Shared with ' + memberNames(workspace) : sharingFor(workspace.workspace_id) ? 'Sharing ' + workspaceName(sharingFor(workspace.workspace_id)) : 'Private')} disabled={busy} onclick={() => { onselect(workspace.workspace_id); close(); }}>
             <span>{workspaceName(workspace)}<span aria-hidden="true">{workspace.workspace_id === origin ? '✓' : ''}</span></span>
             <small>{workspace.shared ? 'Shared · ' + workspace.members.length + (workspace.members.length === 1 ? ' agent' : ' agents') : sharingFor(workspace.workspace_id) ? 'In ' + workspaceName(sharingFor(workspace.workspace_id)) : 'Private'}</small>

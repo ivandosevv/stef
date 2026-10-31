@@ -93,8 +93,11 @@ See [Validation](VALIDATION.md) for actual platform results.
 The audit found no runtime npm advisories after the fixes. The current Svelte
 build plugin still depends on deepmerge 4.3.1, which has a low-severity prototype
 poisoning advisory with no published upstream fix. It is build tooling and does
-not ship in stef's renderer. Keep build configuration trusted; the full dependency
-audit remains documented rather than being hidden by a production-only scan.
+not ship in stef's renderer. The lint toolchain also depends on minimatch versions
+with a moderate glob denial-of-service advisory (GHSA-g3hv-75wg-m249); its upstream
+ranges do not yet accept the fixed major version. Neither dependency ships in the
+renderer. Keep build configuration trusted. CI reports the full audit and blocks
+high or critical development advisories, plus all runtime advisories.
 
 These changes are in the source checkpoint and updated local companion. The
 published v0.3.0 packages predate this audit; a new portable release is pending.

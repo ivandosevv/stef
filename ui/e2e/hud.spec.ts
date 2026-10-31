@@ -1042,6 +1042,34 @@ test('Interactive previews a safe exact style effect with working comparison con
   expect(errors).toEqual([]);
 });
 
+test('Interactive handles repeated style properties in separate saved hunks', async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?companion=1');
+  await selectSession(page, request, 'interactive-repeated-style-effect');
+  await pickDesign(page, 'interactive');
+  const root = await isolatedRoot(request);
+  const file = resolve(root, 'repeated-style-effect.css');
+  const spacer = Array.from({ length: 12 }, (_, index) => '/* unchanged ' + index + ' */').join('\n');
+  await writeFile(file, '.sample { color: #000000; }\n' + spacer + '\n.sample { color: #111111; }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(1);
+  await writeFile(file, '.sample { color: #ffffff; }\n' + spacer + '\n.sample { color: #eeeeee; }\n');
+  await expect(page.getByTestId('workflow-step')).toHaveCount(2);
+  const effect = page.getByRole('region', { name: 'Style effect preview', exact: true });
+  const property = effect.getByRole('combobox', { name: 'Preview style property', exact: true });
+  await expect(property.locator('option')).toHaveCount(2);
+  const target = effect.getByTestId('style-effect-target');
+  for (const [index, before, after] of [['0', 0, 255], ['1', 17, 238]] as const) {
+    await property.selectOption(index);
+    for (const [label, channel] of [['Before style', before], ['After style', after]] as const) {
+      await effect.getByRole('button', { name: label, exact: true }).click();
+      await expect.poll(() => target.evaluate(node => getComputedStyle(node).color)).toBe('rgb(' + [channel, channel, channel].join(', ') + ')');
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
 for (const design of ['minimal', 'interactive'] as const) {
   test(design + ' follows rapid saved-file changes and preserves history across reload and reconnect', async ({ page, request }) => {
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));

@@ -29,4 +29,4 @@ reload, or import step. [Compatibility](docs/CLIENTS.md).
 
 Names and local visuals make no AI calls; agent explanations may use tokens.
 
-[Getting started](docs/GETTING_STARTED.md) · [Security](docs/SECURITY.md) · [Validation](docs/VALIDATION.md) · [Roadmap](docs/ROADMAP.md)
+[Getting started](docs/GETTING_STARTED.md) · [Contributing](CONTRIBUTING.md) · [Security](docs/SECURITY.md) · [Validation](docs/VALIDATION.md) · [Roadmap](docs/ROADMAP.md)
