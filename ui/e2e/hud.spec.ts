@@ -1765,3 +1765,51 @@ test('the optional embedded host still receives file-open actions without a brow
   await expect.poll(() => page.evaluate(() => (window as typeof window & { stefMessages: { type: string; node?: string }[] }).stefMessages.filter(message => message.type === 'stef.openFile' && message.node === 'main.go').length)).toBe(2);
   expect(sockets).toBe(0);
 });
+
+
+for (const design of ['minimal', 'interactive'] as const) {
+  test(design + ' reuses public output without losing file reasons or exact diffs', async ({ page, request }) => {
+    const errors: string[] = [], writes: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const session = 'reused-public-output-' + design;
+    await page.goto('/?companion=1');
+    await selectSession(page, request, session);
+    await pickDesign(page, design);
+    const root = await isolatedRoot(request);
+    const names = ['preference', 'startup', 'test'].map(name => 'reuse-' + design + '-' + name + '.ts');
+    const content = names.map((_, index) => 'export const saved' + index + ' = true;\n');
+    for (let i = 0; i < names.length; i++) await writeFile(resolve(root, names[i]), content[i]);
+    await expect(page.getByTestId('workflow-step')).toHaveCount(3);
+    const revisions = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && names.includes(event.node_name));
+    expect(revisions).toHaveLength(3);
+    const common = 'Apply the saved preference before rendering.';
+    const testReason = 'Verify startup restores the saved preference.';
+    const response = await request.post('/api/changes', { data: {
+      session_id: session, agent_id: 'test-agent', summary: 'Restore saved preference', why: common,
+      changes: revisions.map(event => ({ change_id: event.id, ...(event.node_name === names[2] ? { why: testReason } : {}) })),
+    } });
+    expect(response.status()).toBe(201);
+    const receipt = await response.json();
+    expect(receipt.accepted).toBe(true);
+    expect(receipt.pending_count).toBe(0);
+    expect(JSON.stringify(receipt)).not.toContain(common);
+    await expect(page.getByTestId('workflow-step')).toHaveCount(3);
+    page.on('request', outgoing => {
+      if (outgoing.method() !== 'GET' && new URL(outgoing.url()).pathname.startsWith('/api/')) writes.push(new URL(outgoing.url()).pathname);
+    });
+    for (let i = 0; i < names.length; i++) {
+      const step = page.locator('[data-testid="workflow-step"][title^="' + names[i] + '"]');
+      await chooseStep(step);
+      const reason = i === 2 ? testReason : common;
+      await expect(page.getByRole('region', { name: design === 'minimal' ? 'Why this step' : 'Selected change', exact: true })).toContainText(reason);
+      await expect(page.getByRole('button', { name: 'Request explanation', exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Show diff', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'File diff', exact: true });
+      await expect(dialog.getByRole('region', { name: 'Why this change' })).toContainText(reason);
+      await expect(dialog.locator('[data-testid="diff-line"][data-kind="addition"] .diff-code')).toHaveText(content[i].trim());
+      await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+    }
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}

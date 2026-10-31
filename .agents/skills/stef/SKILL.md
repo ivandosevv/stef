@@ -133,6 +133,18 @@ edits. Only explain changes you can attribute to your task; other edits stay
 visibly unexplained. Per-file explanations can use more agent tokens than major
 milestones; no measured token amount is promised.
 
+For post-edit pending-ID checks, use get_state limit=1; pending IDs and developer
+notes are independent of the recent-history limit. Request more history only
+when coordination needs it.
+
+Reuse an existing concise public explanation as why instead of writing another.
+report_changes accepts common summary and why for matching change_id entries;
+omit repeated per-file fields and override them when the file purpose differs.
+A common reason must genuinely explain every revision that inherits it. Never
+infer exact revision reasons from a general reply. Send detailed progress once
+through stef and keep chat status brief; essential questions and final outcomes
+stay in chat. This avoids repetition, not the original generation or MCP cost.
+
 Codex and Claude PostToolUse hooks can return bounded metadata reminders for
 their concrete edit paths in files or activity mode. They neither generate reasons nor
 consume developer questions. Generated PostToolUse handlers deliver their context
@@ -155,7 +167,7 @@ In activity mode, also share concise public choices through report_event with
 action=decided and a short why when useful. Supported hooks record sanitized
 search/read/edit/test/tool stages locally; host coverage varies. Do not duplicate
 every observed tool call or send private reasoning, prompts, raw commands, or
-output. This mode starts now, with no retrospective reporting. Extra agent
+raw tool output. This mode starts now, with no retrospective reporting. Extra agent
 reports may use tokens; observation itself makes no model calls.
 
 In disabled mode, stop reporting and additional check-ins for the rest of this

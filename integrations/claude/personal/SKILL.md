@@ -39,10 +39,19 @@ Use trusted hook IDs or get_state with changed_paths from your actual edit and
 settle_ms=300, then report_changes with the exact returned revision IDs.
 All activity also shows available sanitized tool stages and brief public
 decisions via report_event action=decided. Never send private thinking, prompts,
-commands, or output. Extra agent reports may use tokens. Start with new work.
+commands, or raw tool output. Extra agent reports may use tokens. Start with new work.
 Disabled stops reporting and extra check-ins for that turn. Only explain edits
 from this chat in the selected project. Passive capture and local visuals make
 no extra model calls.
+
+Use get_state limit=1 for post-edit pending IDs; request more history only when
+coordination needs it. Pending IDs and developer notes are independent of that limit.
+
+Reuse a concise public explanation as why instead of generating another.
+report_changes accepts common summary/why with exact change_id entries; override
+reasons that differ by file. Keep progress prose in stef and chat status brief;
+essential questions and final outcomes stay in chat. This avoids repetition,
+not the original token cost. Never infer exact revision reasons from a general reply.
 
 Agents stay separate unless sharing is explicit. set_workspace action=create
 returns workspace_id and name; chosen peers join with action=join

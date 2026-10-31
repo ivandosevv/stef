@@ -16,7 +16,13 @@ setting: milestones reports only major steps with reasons; files captures and
 explains each saved revision; activity also shows available sanitized tool stages
 and brief agent-shared decisions; disabled stops new recording/reporting.
 In activity, report a concise public choice with action=decided when useful.
-Never submit internal reasoning transcripts, prompts, raw commands, or output.
+Never submit internal reasoning transcripts, prompts, raw commands, or raw tool output.
+Reuse an existing concise public explanation as why; do not generate a duplicate.
+report_changes accepts common summary/why for exact change_id entries with the
+same purpose; override different file reasons. Keep detailed progress in stef
+and chat status brief, with essential questions and final outcomes in chat.
+This saves repeated text, not the original output cost. Never use a general
+reply to infer unrelated exact revision reasons.
 Updates changes begin a new recording window (updates_from); automatic
 explanations apply only to new saves, never to older retained pending files.
 Read the mode once at task start and honor mode changes in receipts. In files

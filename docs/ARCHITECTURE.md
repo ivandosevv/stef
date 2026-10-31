@@ -147,6 +147,12 @@ In files and activity modes, MCP initialization requests a report_changes batch 
 every affected file. get_state exposes bounded unexplained IDs/paths separately
 from recent activity, with an optional bounded debounce delay. The hub validates
 exact file/action/chat references and persists explanation batches atomically.
+Optional batch summary/why fields reuse supplied public output for revisions
+with the same purpose. Individual fields override those defaults; the bridge
+fills missing text locally before the usual atomic validation. Every revision
+still has an exact ID and stored reason. Incomplete or oversized inherited text
+fails validation; receipts do not echo it. Hooks do not scrape assistant chats
+or infer file reasons from completion messages.
 Late reasons fill the original step; another save stays a new unexplained step.
 Legacy adjacent read/test reports still coalesce. Missing reasons stay visible.
 Reasons should be authored with the edit, then reported before the next edit or

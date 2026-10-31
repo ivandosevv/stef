@@ -27,12 +27,14 @@ func (mode UpdateMode) CapturesFiles() bool {
 func (mode UpdateMode) ReportingInstructions() string {
 	switch mode {
 	case UpdatesMilestones:
-		return "Report major milestones with a short why using report_event; no automatic per-file reasons. Answer explicitly requested context via report_event context_id."
+		return "report_event: major milestones only; reuse a brief public why. No per-file reports or polling. context_id answers explicit requests only."
 	case UpdatesActivity:
-		return "Capture supported tool activity locally; report concise choices with action decided and a brief user-facing why. Never share private reasoning transcripts, prompts, commands, or output. " + UpdatesFiles.ReportingInstructions()
+		return "Activity: share brief public choices with action decided; no private thinking, prompts, commands, or raw tool output. " + fileReportingInstructions
 	case UpdatesDisabled:
 		return "Updates disabled. Stop reporting and check-ins for this turn; read the mode once at the next task."
 	default:
-		return "After each edit, use hook pending IDs or get_state once with changed_paths (actual own saved paths) and settle_ms=300; report_changes with each own exact reason before another edit, test, or final reply. Never backfill earlier windows or report extra decisions outside activity mode. context_id answers explicit requests only."
+		return "Files only; no extra choice reports. " + fileReportingInstructions
 	}
 }
+
+const fileReportingInstructions = "After each edit: hook IDs or one get_state (changed_paths=own saves, settle_ms=300, limit=1), then report_changes before another edit/test/final. Reuse public text as common summary/why; override different reasons. Exact current-window IDs only. No polling or duplicate chat prose. context_id answers explicit requests only."

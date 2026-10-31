@@ -16,7 +16,19 @@ func Published(h *hub.Hub, stored telemetry.Event) Publication {
 }
 
 func ReportChanges(h *hub.Hub, input ChangesInput) (ChangesReceipt, error) {
-	events, err := h.ExplainChanges(input.SessionID, input.AgentID, input.Changes)
+	// Reuse supplied public text without making another model call or mutating
+	// the caller's batch. The hub still validates each exact revision atomically.
+	changes := make([]telemetry.ChangeExplanation, len(input.Changes))
+	for i, change := range input.Changes {
+		if change.Summary == "" {
+			change.Summary = input.Summary
+		}
+		if change.Why == "" {
+			change.Why = input.Why
+		}
+		changes[i] = change
+	}
+	events, err := h.ExplainChanges(input.SessionID, input.AgentID, changes)
 	if err != nil {
 		return ChangesReceipt{}, err
 	}

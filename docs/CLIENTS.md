@@ -368,6 +368,28 @@ User mode changes reach an already-working agent at its next check-in, not by
 interrupting the client's generation. No polling or measured token savings are implied.
 In files and activity modes, after each edit, get_state with changed_paths and settle_ms=300 returns
 pending file IDs; explain every file you changed in one report_changes batch.
+Use get_state limit=1 for post-edit checks: pending IDs and developer notes do
+not depend on the history limit. Request more history when coordinating.
+Reuse an existing brief public explanation instead of generating a second one.
+Common summary/why fields apply only to revisions with the same purpose; a
+revision can override either field independently:
+
+```json
+{
+  "session_id": "retained-origin",
+  "agent_id": "worker",
+  "summary": "Restore saved appearance",
+  "why": "Apply the saved choice before rendering.",
+  "changes": [
+    {"change_id": "123"},
+    {"change_id": "124", "why": "Verify startup restores the chosen appearance."}
+  ]
+}
+```
+
+Use actual current-window IDs from stef. Keep detailed progress in stef and chat
+status brief, with essential questions and final outcomes in chat. This reduces
+repeated text; it cannot undo the original output cost or promise free MCP calls.
 Keep each reason brief and tied to that revision. Missing reasons remain visible
 and a later edit needs a new reason. report_event handles reads/tests/plans. Developer
 notes target these reporter IDs. A hook's session identity may differ from the

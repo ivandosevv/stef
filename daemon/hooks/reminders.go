@@ -249,7 +249,7 @@ func reminderContext(root, endpoint string, activity telemetry.Activity, mode te
 		if len(pending) == 0 {
 			request = "stef: This bounded reminder omits edit paths or revisions (" + label + "). Use the path-filtered recovery below before another edit, test, or final reply."
 		}
-		prefix := request + " Give each exact change_id a short summary and your actual reason in why; optional parents connect related paths. Explain only changes you made." + guidance + " Honor subsequent mode receipts. If the host shows a truncated context preview, read the complete reminder before assuming this list is complete." + command + " Metadata: "
+		prefix := request + " Reuse a brief public explanation as common summary/why for matching change_id entries; override different file reasons. Optional parents connect related paths. Explain only your own changes; do not repeat the prose in chat." + guidance + " Honor subsequent mode receipts. If the host shows a truncated context preview, read the complete reminder before assuming this list is complete." + command + " Metadata: "
 		metadata, _ := json.Marshal(struct {
 			Repo             string                    `json:"repo"`
 			SessionID        string                    `json:"session_id"`

@@ -67,9 +67,20 @@ start model calls. Updates and Clear apply to the selected workspace. Never poll
 - activity: follow the exact file reporting rule above, and share brief public
   decisions through report_event action=decided when useful. Available sanitized
   hook stages appear locally. Never send private thinking, prompts, commands,
-  or output. Extra agent reports may use tokens; do not backfill older activity.
+  or raw tool output. Extra agent reports may use tokens; do not backfill older activity.
 - disabled: stop reporting and extra check-ins for this turn. Recheck the mode
   at the next task's start.
+
+For post-edit pending-ID checks, use get_state limit=1; pending IDs and developer
+notes are independent of the recent-history limit. Request more history only
+when coordination needs it.
+
+Reuse an existing concise public explanation as why instead of writing it again.
+In report_changes, common summary and why can cover matching change_id entries;
+include per-file overrides where the purpose differs. Never use a general reply
+to explain unrelated changes. Send detailed progress once through stef and keep
+chat status brief. Essential questions and final outcomes still belong in chat.
+Routing text does not undo its token cost; this avoids duplicate explanations.
 
 Sequence each edit, bounded check-in, and its exact report in one orchestration
 call when possible. Changes to Updates start a new recording window. Explain

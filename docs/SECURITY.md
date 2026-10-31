@@ -72,6 +72,12 @@ It does not collect private thinking, raw commands, prompts, or tool output.
 The hub stamps each event's original recording mode/window; switching modes
 does not expose previously hidden observations.
 Agent-authored explanations still consume tokens in that agent's conversation.
+Existing brief public explanations can be reused in a report_changes batch with
+common summary/why and per-revision overrides. The bridge expands them locally,
+validates exact revisions, and keeps the explanation out of its receipt. It does
+not read private transcripts, copy arbitrary logs, or treat general output as
+proof of a file's intent. Reuse avoids repeated generated text; billing still
+depends on the agent and model, including MCP requests and responses.
 Explain more queues an explicit request for that agent's next check-in. stef does
 not launch another model. Disabled stops new recording and reporting. This is
 zero extra inference, not a promise that agent communication is token-free.

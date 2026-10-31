@@ -24,6 +24,12 @@ read; Follow latest resumes it. Show diff opens that exact saved revision, with
 additions and removals. Suggest lets you send a note at the
 agent's next check-in. Clear resets the selected workspace's workflow.
 
+Agents can reuse an existing short public explanation in stef. One reason can
+cover matching file revisions, with individual reasons where the purpose differs.
+Detailed progress stays in stef; chat keeps brief status and final outcomes. This
+reduces repeated text, while the original output and MCP communication still cost
+tokens.
+
 Updates chooses Major milestones, Every file, All activity, or Disabled. Changes
 apply to new work. Earlier steps stay available through Show saved history.
 All activity adds available searches, reads, tool stages, and brief decisions the

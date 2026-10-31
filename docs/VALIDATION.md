@@ -756,3 +756,27 @@ the working agent; stef adds no background inference.
   bytes, Mellow Wren 1341 membership, and the All activity recording window.
   Read-only live browser checks in both designs restored a paused selection
   after reload and resumed latest on click, with zero API writes or page errors.
+
+## Public explanation reuse checkpoint, 2026-10-31
+
+- report_changes accepts optional common summary/why plus exact revision IDs.
+  Per-file overrides remain independent. Shared text is expanded locally and
+  validated atomically; receipts do not repeat the supplied explanation.
+- Forwarding, Streamable HTTP, stdio, and fallback CLI checks verified common
+  reasons, overrides, attribution, and exact saved revision coverage. Invalid,
+  oversized, foreign-workspace, duplicate, and old-window batches have no partial
+  effects. Milestones and Disabled still stop automatic file reports.
+- make check, make test (Go race checks and 60 UI tests), make build, and all
+  50 browser cases passed. Both designs show reused reasons and overrides beside
+  the exact saved diff without additional UI requests. After the final guidance
+  update, checks/build and the affected MCP, telemetry, hook, and setup race
+  suites passed again. Both bundled skill entrypoints passed validation.
+- A six-revision example with one matching public explanation reduced request
+  JSON from 741 to 241 bytes, or 67.5%. This measures request size, not billed
+  tokens. Original generation, MCP traffic, and model-specific billing still apply.
+- Agent guidance encourages explanation reuse, brief chat status, and limit=1
+  for routine post-edit checks. Pending IDs and developer notes retain their
+  separate limits. More history remains available for actual coordination.
+- Reloaded the personal daemon on port 4825, preserving its four workspaces,
+  shared membership, history, mode, and recording window. A fresh MCP connection
+  received the updated guidance. Existing client bridges need reconnection.

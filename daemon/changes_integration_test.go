@@ -128,6 +128,31 @@ func TestPerChangeCoverageOverMCP(t *testing.T) {
 			if state.PendingCount != 1 || state.PendingChanges[0].ChangeID != third.ID {
 				t.Fatal("later save inherited an old explanation")
 			}
+			fourth := observe("theme.ts")
+			fifth := observe("main_test.ts")
+			shared := bridge.ChangesInput{SessionID: selected.SessionID, AgentID: "agent", Summary: "Reuse saved output", Why: "Use the saved appearance across the startup flow.", Changes: []telemetry.ChangeExplanation{
+				{ChangeID: third.ID},
+				{ChangeID: fourth.ID, Summary: "Retain preference", Parents: []string{"main.ts"}},
+				{ChangeID: fifth.ID, Why: "Verify the preference survives a fresh startup."},
+			}}
+			call("report_changes", shared, &receipt)
+			if !receipt.Accepted || receipt.PendingCount != 0 || len(receipt.IDs) != 3 {
+				t.Fatalf("reused output lost exact coverage: %+v", receipt)
+			}
+			last = h.SessionSnapshot(selected.SessionID).Events
+			group := last[len(last)-3:]
+			for i, id := range []string{third.ID, fourth.ID, fifth.ID} {
+				if group[i].ChangeID != id || group[i].AgentID != "agent" {
+					t.Fatalf("reused output changed revision attribution: %+v", group)
+				}
+			}
+			if group[0].Summary != shared.Summary || group[0].Why != shared.Why || group[1].Summary != "Retain preference" || group[1].Why != shared.Why || len(group[1].Parents) != 1 || group[2].Summary != shared.Summary || group[2].Why != shared.Changes[2].Why {
+				t.Fatalf("shared output or individual overrides changed: %+v", group)
+			}
+			raw, _ := json.Marshal(receipt)
+			if bytes.Contains(raw, []byte(shared.Why)) {
+				t.Fatal("receipt repeated the supplied explanation")
+			}
 		})
 	}
 }

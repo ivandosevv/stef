@@ -63,6 +63,10 @@ returned endpoint plus `view_path` with the IDE's actual built-in browser tool.
 If it has no such tool, provide that scoped localhost link. Say a view opened
 only after observing it. Follow `update_mode` and `reporting_instructions`;
 explain actual new work at that level. Do not generate sample activity.
+Reuse concise public explanations in stef instead of writing duplicate progress
+in chat. report_changes supports common summary/why for matching exact revisions,
+with per-file overrides where needed. Keep essential questions and final outcomes
+in chat; never infer a revision's reason from general output.
 
 The bundled [stef skill](.agents/skills/stef/SKILL.md) describes reporting, saved
 diffs, suggestions, and shared workspaces. The MCP server provides the same

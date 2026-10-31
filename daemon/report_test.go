@@ -42,7 +42,7 @@ func TestCLIReportsExactChangesThroughMCP(t *testing.T) {
 			observed = captured
 		}
 	}
-	arguments := bridge.ChangesInput{SessionID: "cli-chat", AgentID: "cli-agent", Changes: []telemetry.ChangeExplanation{{ChangeID: observed.ID, Summary: "Share theme preference", Why: "Keep appearance consistent across startup and controls."}}}
+	arguments := bridge.ChangesInput{SessionID: "cli-chat", AgentID: "cli-agent", Summary: "Share theme preference", Why: "Keep appearance consistent across startup and controls.", Changes: []telemetry.ChangeExplanation{{ChangeID: observed.ID}}}
 	input, _ := json.Marshal(arguments)
 	var output bytes.Buffer
 	if err := reportChangesCLI(context.Background(), server.URL+"/", root, bytes.NewReader(input), &output); err != nil {
@@ -56,7 +56,7 @@ func TestCLIReportsExactChangesThroughMCP(t *testing.T) {
 		t.Fatalf("missing exact MCP receipt: %+v", receipt)
 	}
 	events := h.SessionSnapshot("cli-chat").Events
-	if last := events[len(events)-1]; last.ChangeID != observed.ID || last.AgentID != "cli-agent" || last.Why != arguments.Changes[0].Why {
+	if last := events[len(events)-1]; last.ChangeID != observed.ID || last.AgentID != "cli-agent" || last.Why != arguments.Why {
 		t.Fatalf("wrong revision or reason: %+v", last)
 	}
 	arguments.Changes[0].ChangeID = "99999"
