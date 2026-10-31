@@ -87,6 +87,9 @@ func (h *Hub) RegisterSession(id string) (Message, error) {
 	return h.snapshotSessionLocked(id), nil
 }
 func (h *Hub) registerLocked(id string) error {
+	if err := h.admitWorkspaceLocked(id); err != nil {
+		return err
+	}
 	if _, ok := h.originFrom[id]; ok {
 		return nil
 	}
@@ -190,16 +193,21 @@ func (h *Hub) ConfigureWorkspace(input WorkspaceInput) (Workspace, error) {
 			return Workspace{}, err
 		}
 	}
-	if err := h.registerLocked(input.SessionID); err != nil {
-		return Workspace{}, err
-	}
-	name := ""
 	if input.Action == "create" {
 		var id [16]byte
 		if _, err := rand.Read(id[:]); err != nil {
 			return Workspace{}, err
 		}
 		room = "shared-" + hex.EncodeToString(id[:])
+		if err := h.admitWorkspaceLocked(input.SessionID, room); err != nil {
+			return Workspace{}, err
+		}
+	}
+	if err := h.registerLocked(input.SessionID); err != nil {
+		return Workspace{}, err
+	}
+	name := ""
+	if input.Action == "create" {
 		var err error
 		name, err = h.newWorkspaceNameLocked()
 		if err != nil {
@@ -343,6 +351,9 @@ func (h *Hub) ClaimObservedChanges(origin string, paths []string) error {
 }
 
 func (h *Hub) replayWorkspaceControl(control sessionControl) (bool, error) {
+	if err := h.admitWorkspaceLocked(control.SessionID, control.WorkspaceID); err != nil {
+		return true, err
+	}
 	switch control.Control {
 	case "register":
 		if telemetry.Session(control.SessionID) != nil {

@@ -22,6 +22,78 @@ POWERSHELL = shutil.which("powershell.exe") or shutil.which("pwsh")
 
 
 @unittest.skipUnless(os.name == "nt" and POWERSHELL, "Run with Windows PowerShell on the Windows CI runner.")
+class WindowsDownloadBoundaryTest(unittest.TestCase):
+    def test_redirects_are_checked_before_the_next_host_is_contacted(self):
+        content = SCRIPT.read_text()
+        functions = content[content.index("function Get-StefResource("):content.rindex("\ntry {")]
+        # Replace the .NET network boundary with an offline message handler.
+        # The actual shipped download loop, URI validator, body and cancellation
+        # budgets still run; rejected redirects must never reach this handler.
+        setup = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Net.Http
+Add-Type -TypeDefinition @'
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+public class StefOfflineHandler : HttpMessageHandler {
+    public bool AllowAutoRedirect { get; set; }
+    public static string Redirect;
+    public static bool Forever;
+    public static List<string> Requested = new List<string>();
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) {
+        Requested.Add(request.RequestUri.AbsoluteUri);
+        var response = new HttpResponseMessage();
+        response.RequestMessage = request;
+        if (Requested.Count == 1 || Forever) {
+            response.StatusCode = HttpStatusCode.Found;
+            response.Headers.Location = new Uri(Redirect, UriKind.RelativeOrAbsolute);
+        } else {
+            response.StatusCode = HttpStatusCode.OK;
+            response.Content = new ByteArrayContent(new byte[] {42});
+        }
+        return Task.FromResult(response);
+    }
+}
+'@ -ReferencedAssemblies @('System.Net.Http', 'System', 'System.Core')
+function New-Object {
+    param([string]$TypeName, [object[]]$ArgumentList)
+    if ($TypeName -eq 'System.Net.Http.HttpClientHandler') { return [StefOfflineHandler]::new() }
+    return Microsoft.PowerShell.Utility\New-Object @PSBoundParameters
+}
+'''
+        checks = r'''
+$start = 'https://github.com/ivandosevv/stef/releases/download/v0.3.0/archive'
+foreach ($target in @('https://outside.invalid/secret', 'http://github.com/plaintext', 'https://github.com:8443/other', 'https://user@github.com/other')) {
+    [StefOfflineHandler]::Requested.Clear()
+    [StefOfflineHandler]::Redirect = $target
+    $rejected = $false
+    try { $null = Get-StefResource $start 10 } catch { $rejected = $true }
+    if (-not $rejected -or [StefOfflineHandler]::Requested.Count -ne 1) { throw 'An unsafe redirect was contacted.' }
+}
+[StefOfflineHandler]::Requested.Clear()
+[StefOfflineHandler]::Redirect = '/ivandosevv/stef/releases/download/v0.3.0/final'
+$bytes = Get-StefResource $start 10
+if ($bytes.Length -ne 1 -or $bytes[0] -ne 42 -or [StefOfflineHandler]::Requested.Count -ne 2) { throw 'An allowed relative redirect failed.' }
+[StefOfflineHandler]::Requested.Clear()
+[StefOfflineHandler]::Forever = $true
+$rejected = $false
+try { $null = Get-StefResource $start 10 } catch { $rejected = $true }
+if (-not $rejected -or [StefOfflineHandler]::Requested.Count -ne 6) { throw 'The redirect chain limit failed.' }
+'''
+        (ROOT / ".test-workspace").mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".test-workspace", prefix="ps1-http.") as temporary:
+            harness = Path(temporary) / "download-boundary.ps1"
+            harness.write_text(setup + functions + checks)
+            result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+                                    capture_output=True, text=True, encoding="utf-8", timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+@unittest.skipUnless(os.name == "nt" and POWERSHELL, "Run with Windows PowerShell on the Windows CI runner.")
 class WindowsInstallerTest(unittest.TestCase):
     def setUp(self):
         binary = ROOT / "bin/stef.exe"
@@ -138,6 +210,20 @@ class WindowsInstallerTest(unittest.TestCase):
         self.assertIn("unsafe", result.stderr.lower())
         self.assertEqual(self.installed.read_bytes(), before)
         self.assertFalse((self.base / "escaped.txt").exists())
+
+    def test_linked_runtime_license_does_not_overwrite_an_unrelated_file(self):
+        self.run_installer("-BuildOnly")
+        marker = self.base / "unrelated-license"
+        marker.write_text("keep unrelated contents")
+        license_path = self.project / ".stef/runtime/LICENSE"
+        license_path.unlink()
+        try:
+            license_path.symlink_to(marker)
+        except OSError as error:
+            self.skipTest("Windows symlink permission unavailable: " + str(error))
+        result = self.run_installer("-BuildOnly", success=False)
+        self.assertIn("without links", result.stderr.lower())
+        self.assertEqual(marker.read_text(), "keep unrelated contents")
 
     def test_python_release_install_keeps_unicode_from_the_actual_go_receipt(self):
         spec = importlib.util.spec_from_file_location("stef_windows_installer", ROOT / "install.py")

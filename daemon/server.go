@@ -21,8 +21,12 @@ import (
 
 func handler(h *hub.Hub, uiDir, port string) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcp.NewHTTPHandler(h))
-	mux.HandleFunc("GET /ws", h.ServeWS)
+	mcpHandler := mcp.NewHTTPHandler(h)
+	mux.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+		mcpHandler.ServeHTTP(w, r)
+	}))
+	mux.Handle("GET /ws", limitConnections(http.HandlerFunc(h.ServeWS), 64))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "name": "stef", "version": "0.3.0", "repo": h.Snapshot().Repo})
 	})
@@ -318,21 +322,107 @@ func localHost(host string) bool {
 	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
-func localOnly(next http.Handler, port string) http.Handler {
+// requestAuthority validates the HTTP origin syntax without DNS resolution.
+// Cookies and loopback addresses alone do not distinguish local web origins.
+func requestAuthority(authority string) (string, string, bool) {
+	u, err := url.Parse("http://" + authority)
+	if err != nil || u.Host != authority || strings.ContainsAny(authority, "/\\?#@") || strings.HasSuffix(authority, ":") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || !localHost(u.Host) {
+		return "", "", false
+	}
+	port := u.Port()
+	if port == "" {
+		port = "80"
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port {
+		return "", "", false
+	}
+	return net.JoinHostPort(strings.ToLower(u.Hostname()), port), port, true
+}
+
+func sameOrigin(origin, authority string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" || origin != "http://"+u.Host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return false
+	}
+	value, _, ok := requestAuthority(u.Host)
+	return ok && value == authority
+}
+
+// A WebSocket occupies its own quota until closed. Finite HTTP requests and MCP
+// streams use separate paths so idle companion tabs cannot starve agent reports.
+func limitConnections(next http.Handler, maximum int) http.Handler {
+	active := make(chan struct{}, maximum)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !localHost(r.Host) {
-			http.Error(w, "loopback Host required", http.StatusForbidden)
+		select {
+		case active <- struct{}{}:
+			defer func() { <-active }()
+		default:
+			w.Header().Set("Retry-After", "2")
+			http.Error(w, "too many companion connections", http.StatusTooManyRequests)
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" {
-			u, err := url.Parse(origin)
-			if err != nil || u.Scheme != "http" || !localHost(u.Host) || u.User != nil || (u.Port() != port && u.Port() != "5173") {
-				http.Error(w, "origin is not an stef local UI", http.StatusForbidden)
+		next.ServeHTTP(w, r)
+	})
+}
+
+type finiteRequestBody struct {
+	io.ReadCloser
+	controller *http.ResponseController
+}
+
+func (body *finiteRequestBody) Read(p []byte) (int, error) {
+	n, err := body.ReadCloser.Read(p)
+	if err == io.EOF {
+		_ = body.controller.SetReadDeadline(time.Time{})
+	}
+	return n, err
+}
+
+func localOnly(next http.Handler, port string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authority, requestPort, ok := requestAuthority(r.Host)
+		listenPort := port
+		if local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+			if _, actual, err := net.SplitHostPort(local.String()); err == nil {
+				listenPort = actual
+			}
+		}
+		if !ok || requestPort != listenPort {
+			http.Error(w, "loopback listener Host required", http.StatusForbidden)
+			return
+		}
+		if origins := r.Header.Values("Origin"); len(origins) > 0 {
+			if len(origins) != 1 || !sameOrigin(origins[0], authority) {
+				http.Error(w, "same-origin companion required", http.StatusForbidden)
 				return
 			}
 		}
+		// Browser metadata also covers GET requests that omit Origin. Initial
+		// top-level navigation can load the public shell; it contains no history.
+		site := r.Header.Get("Sec-Fetch-Site")
+		destination := r.Header.Get("Sec-Fetch-Dest")
+		navigation := r.Method == http.MethodGet && r.URL.Path == "/" && r.Header.Get("Sec-Fetch-Mode") == "navigate" && (destination == "document" || destination == "iframe")
+		if site != "" && site != "same-origin" && site != "none" && !navigation {
+			http.Error(w, "cross-origin browser request rejected", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' vscode-webview: vscode-file:")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/mcp" || r.URL.Path == "/healthz" {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		if r.Method == http.MethodPost {
+			// Bound body reads without imposing a write deadline on MCP SSE.
+			controller := http.NewResponseController(w)
+			if controller.SetReadDeadline(time.Now().Add(5*time.Second)) == nil {
+				// Clear only after EOF. Clearing when a handler rejects incomplete
+				// JSON would leave net/http draining that body without a deadline.
+				r.Body = &finiteRequestBody{ReadCloser: r.Body, controller: controller}
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }

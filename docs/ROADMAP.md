@@ -26,6 +26,8 @@
 - [x] Minimal/Interactive local views and selected-change hunk/milestone visuals
 - [x] Independent workflow/properties scrolling, keyboard and touch containment
 - [x] Local style-effect samples, changed-section exploration, and exact-line suggestions
+- [x] On-demand exact source comparisons with local changed-text highlights
+- [x] Strict browser boundaries, private journal opening, credential exclusions, and resource budgets
 - [x] OpenCode project setup and a source-bootstrap command with explicit prerequisites
 - [x] Portable Python setup/build entry and Windows PowerShell installation path
 - [x] Current-project install guide for agents given the GitHub URL
@@ -42,6 +44,10 @@
 
 ## Next delivery work
 
+- [ ] Publish the security update in new portable release packages
+- [ ] Add local capability authentication and explicit worker authorization
+- [ ] Compact cleared journal history safely without losing chat identity or recording windows
+- [ ] Bound aggregate retained event memory across all workspaces
 - [x] Active macOS, Windows, and Linux build/test and six-target release workflows
 - [x] Hosted build, installer, daemon, and MCP checks on all three operating systems
 - [x] Public v0.3.0 portable release and fresh-project installation on macOS/Linux

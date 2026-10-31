@@ -172,8 +172,10 @@ func run() error {
 		if directory == "" {
 			directory = filepath.Join(root, ".stef")
 		}
-		if err := os.MkdirAll(directory, 0700); err != nil {
-			return err
+		if *data != "" {
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				return err
+			}
 		}
 		journal = filepath.Join(directory, "events.jsonl")
 	}

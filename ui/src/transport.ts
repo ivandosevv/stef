@@ -1,4 +1,5 @@
 import type { StreamMessage } from './lib';
+import { isStreamMessage, trustedHostMessage } from './stream-security';
 
 interface HostAPI { postMessage(message: unknown): void; }
 type HostWindow = Window & { stefHost?: HostAPI; acquireVsCodeApi?: () => HostAPI };
@@ -13,9 +14,10 @@ export function sendToHost(message: unknown): void { host()?.postMessage(message
 export function connectStream(onmessage: (message: StreamMessage) => void, onstatus: (connected: boolean, detail: string) => void, sessionID = ''): () => void {
   if (isEmbedded()) {
     const receive = (event: MessageEvent) => {
+      if (!trustedHostMessage(event, window, location.origin)) return;
       const data = event.data;
-      if (data?.type === 'stef.stream') onmessage(data.message as StreamMessage);
-      else if (data?.type === 'stef.connection') onstatus(Boolean(data.connected), String(data.detail ?? ''));
+      if (data?.type === 'stef.stream' && isStreamMessage(data.message)) onmessage(data.message);
+      else if (data?.type === 'stef.connection' && typeof data.connected === 'boolean' && (data.detail === undefined || (typeof data.detail === 'string' && data.detail.length <= 1000))) onstatus(data.connected, data.detail ?? '');
     };
     window.addEventListener('message', receive);
     sendToHost({ type: 'stef.ready', session_id: sessionID });
@@ -29,7 +31,11 @@ export function connectStream(onmessage: (message: StreamMessage) => void, onsta
     socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws' + (sessionID ? '?session_id=' + encodeURIComponent(sessionID) : ''));
     socket.onopen = () => onstatus(true, '');
     socket.onmessage = (message) => {
-      try { onmessage(JSON.parse(message.data) as StreamMessage); }
+      try {
+        const data: unknown = JSON.parse(message.data);
+        if (!isStreamMessage(data)) throw new Error('Invalid stream message');
+        onmessage(data);
+      }
       catch { onstatus(true, 'The engine sent an unreadable event.'); }
     };
     socket.onclose = () => { if (disposed) return; onstatus(false, 'Connecting to the local engine…'); if (!disposed) retry = setTimeout(connect, 1500); };

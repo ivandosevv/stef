@@ -217,6 +217,44 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(installer.install_binary(self.project, source, "windows"), old)
             replace.assert_not_called()
 
+    def test_runtime_links_preserve_unrelated_files_before_any_download(self):
+        for destination_name in ["bin/stef", "LICENSE"]:
+            for external in [False, True]:
+                with self.subTest(destination=destination_name, external=external):
+                    project = self.base / ("links-" + next(tempfile._get_candidate_names()))
+                    (project / ".stef/runtime/bin").mkdir(parents=True)
+                    marker = (self.base if external else project) / ("marker-" + next(tempfile._get_candidate_names()))
+                    marker.write_bytes(b"unrelated contents")
+                    binary = project / ".stef/runtime/bin/stef"
+                    binary.write_bytes(b"previous binary")
+                    destination = project / ".stef/runtime" / destination_name
+                    destination.unlink(missing_ok=True)
+                    try:
+                        destination.symlink_to(marker)
+                    except OSError as error:
+                        self.skipTest("Filesystem symlinks unavailable: " + str(error))
+                    with patch.object(installer, "target", return_value=("linux", "amd64")), \
+                         patch.object(installer, "fetch") as fetch, self.assertRaisesRegex(installer.InstallError, "links"):
+                        installer.install(self.arguments(repo=str(project)))
+                    fetch.assert_not_called()
+                    self.assertEqual(marker.read_bytes(), b"unrelated contents")
+                    if destination_name == "LICENSE":
+                        self.assertEqual(binary.read_bytes(), b"previous binary")
+
+    def test_in_project_runtime_directory_aliases_are_also_refused(self):
+        other = self.project / "other"
+        other.mkdir()
+        marker = other / "keep.txt"
+        marker.write_text("unrelated contents")
+        try:
+            (self.project / ".stef").symlink_to(other, target_is_directory=True)
+        except OSError as error:
+            self.skipTest("Filesystem symlinks unavailable: " + str(error))
+        with patch.object(installer, "fetch") as fetch, self.assertRaisesRegex(installer.InstallError, "links"):
+            installer.install(self.arguments())
+        fetch.assert_not_called()
+        self.assertEqual(list(other.iterdir()), [marker])
+
     def test_failed_compile_preserves_the_working_binary(self):
         source = self.base / "stef source"
         (source / "daemon").mkdir(parents=True)

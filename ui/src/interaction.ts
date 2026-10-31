@@ -43,7 +43,7 @@ type Color = [number, number, number, number];
 const namedColors: Record<string, Color> = { black: [0, 0, 0, 1], white: [255, 255, 255, 1], red: [255, 0, 0, 1], green: [0, 128, 0, 1], blue: [0, 0, 255, 1], transparent: [0, 0, 0, 0] };
 function literalColor(value: string): Color | undefined {
   const lower = value.toLowerCase();
-  if (namedColors[lower]) return namedColors[lower];
+  if (Object.hasOwn(namedColors, lower)) return namedColors[lower];
   const hex = /^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.exec(value)?.[1];
   if (hex) {
     const expanded = hex.length <= 4 ? [...hex].map(character => character + character).join('') : hex;
@@ -55,6 +55,7 @@ function literalColor(value: string): Color | undefined {
 }
 
 export interface StyleEffect {
+  selector?: string;
   sourceProperty: string;
   property: string;
   before: string;
@@ -73,7 +74,7 @@ function safeEffect(property: string, before: string, after: string): StyleEffec
   if (property === 'opacity') {
     if (/^(?:0|1|0?\.\d+)$/.test(before) && /^(?:0|1|0?\.\d+)$/.test(after)) return { sourceProperty: property, property, before, after, length: { before: Number(before), after: Number(after), unit: '' } };
   }
-  const limit = sizeLimits[property];
+  const limit = Object.hasOwn(sizeLimits, property) ? sizeLimits[property] : undefined;
   if (!limit) return undefined;
   const parse = (value: string) => /^(0|\d+(?:\.\d+)?)(px|rem|em)?$/.exec(value);
   const oldSize = parse(before), newSize = parse(after);
@@ -85,13 +86,48 @@ function safeEffect(property: string, before: string, after: string): StyleEffec
   return { sourceProperty: property, property, before, after, length: { before: Number(oldSize[1]), after: Number(newSize[1]), unit } };
 }
 
-function declarations(lines: DiffLine[], kind: 'addition' | 'removal'): Map<string, string[]> {
-  const values = new Map<string, string[]>();
-  for (const line of lines.filter(line => line.kind === kind)) {
-    // Only literal declarations from removed/added source, never current files or evaluated source.
-    for (const match of line.text.matchAll(/(?:^|[;{])\s*([\w-]+)\s*:\s*([^;{}]+?)\s*(?=;|}|$)/g)) {
-      const property = match[1].startsWith('--') ? match[1] : match[1].toLowerCase();
-      values.set(property, [...(values.get(property) ?? []), match[2].trim()]);
+interface Declaration { selector: string; property: string; values: string[]; }
+
+function capturedStyles(source: string, path: string): string | undefined {
+  if (/\.(?:css|scss|less)$/i.test(path)) return source;
+  // Markup needs complete captured style tags. An interior snippet could be a
+  // script string or comment; absence of context is not evidence of CSS scope.
+  if (/<script\b|<!--|-->/i.test(source)) return undefined;
+  const sections = [...source.matchAll(/^\s*<style(?:\s+(?:global|lang=["'](?:css|scss|less)["']))*\s*>\s*$([\s\S]*?)^\s*<\/style>\s*$/gm)];
+  if (sections.length !== 1) return undefined;
+  const section = sections[0];
+  if (source.slice(0, section.index).trim() || source.slice(section.index! + section[0].length).trim()) return undefined;
+  return section[1];
+}
+
+function declarations(lines: DiffLine[], kind: 'addition' | 'removal', path: string): Map<string, Declaration> {
+  const source = capturedStyles(lines.filter(line => line.kind === kind || line.kind === 'context').map(line => line.text).join('\n'), path);
+  const values = new Map<string, Declaration>();
+  if (source === undefined) return values;
+  const clean = source.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  if (clean.includes('/*') || clean.includes('*/')) return values;
+  let start = 0, depth = 0, opening = 0, selector = '', nested = false;
+  for (let index = 0; index < clean.length; index++) {
+    if (clean[index] === '{') {
+      if (depth === 0) { selector = clean.slice(start, index).trim(); opening = index; nested = false; }
+      else nested = true;
+      depth++;
+    } else if (clean[index] === '}') {
+      if (depth > 0 && --depth === 0 && !nested && selector && /^[.#:\[\]\w\s>,+~*()=-]+$/.test(selector)) {
+        // Complete flat rules only. At-rule/nesting scope, quoted selectors,
+        // partial declarations and source strings are intentionally unsupported.
+        const scope = selector.replace(/\s+/g, ' ');
+        const body = clean.slice(opening + 1, index);
+        for (const declaration of body.split(';')) {
+          const match = /^\s*([\w-]+)\s*:\s*([^;{}]+?)\s*$/.exec(declaration);
+          if (!match) continue;
+          const property = match[1].startsWith('--') ? match[1] : match[1].toLowerCase();
+          const key = scope + '\n' + property;
+          const existing = values.get(key);
+          values.set(key, { selector: scope, property, values: [...(existing?.values ?? []), match[2].trim()] });
+        }
+      }
+      if (depth === 0) start = index + 1;
     }
   }
   return values;
@@ -102,15 +138,55 @@ export function styleEffects(diff: string, path: string): StyleEffect[] {
   if (!/\.(?:css|scss|less|svelte|html)$/i.test(path)) return [];
   const effects: StyleEffect[] = [];
   for (const hunk of diffHunks(diff)) {
-    const before = declarations(hunk, 'removal'), after = declarations(hunk, 'addition');
-    for (const [property, oldValues] of before) {
-      const newValues = after.get(property);
-      if (oldValues.length !== 1 || newValues?.length !== 1) continue;
-      const effect = safeEffect(property, oldValues[0], newValues[0]);
-      if (effect) effects.push(effect);
+    const before = declarations(hunk, 'removal', path), after = declarations(hunk, 'addition', path);
+    for (const [key, declaration] of before) {
+      const next = after.get(key);
+      if (declaration.values.length !== 1 || next?.values.length !== 1) continue;
+      const effect = safeEffect(declaration.property, declaration.values[0], next.values[0]);
+      if (effect) effects.push({ ...effect, selector: declaration.selector });
     }
   }
   return effects.slice(0, 12);
+}
+
+export interface SavedComparison {
+  prefix: string;
+  before: string;
+  after: string;
+  suffix: string;
+  beforeLines: number[];
+  afterLines: number[];
+  beforeNoNewline: boolean;
+  afterNoNewline: boolean;
+}
+
+// Compare the whole contiguous saved replacement; never guess which lines in a
+// multi-line rewrite correspond. Only a shared prefix/suffix is inferred locally.
+export function savedComparison(lines: DiffLine[], selected: DiffLine): SavedComparison | undefined {
+  if (selected.kind !== 'addition' && selected.kind !== 'removal') return undefined;
+  const selectedIndex = lines.findIndex(line => lineKey(line) === lineKey(selected));
+  if (selectedIndex < 0) return undefined;
+  const isChange = (line: DiffLine) => line.kind === 'addition' || line.kind === 'removal' || (line.kind === 'meta' && line.text === '\\ No newline at end of file');
+  let start = selectedIndex, end = selectedIndex + 1;
+  while (start > 0 && isChange(lines[start - 1])) start--;
+  while (end < lines.length && isChange(lines[end])) end++;
+  const block = lines.slice(start, end);
+  const beforeRows = block.filter(line => line.kind === 'removal');
+  const afterRows = block.filter(line => line.kind === 'addition');
+  const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : undefined;
+  const segments = (text: string) => segmenter ? [...segmenter.segment(text)].map(part => part.segment) : Array.from(text);
+  const before = segments(beforeRows.map(line => line.text).join('\n'));
+  const after = segments(afterRows.map(line => line.text).join('\n'));
+  let prefixLength = 0, suffixLength = 0;
+  while (prefixLength < Math.min(before.length, after.length) && before[prefixLength] === after[prefixLength]) prefixLength++;
+  while (suffixLength < Math.min(before.length, after.length) - prefixLength && before[before.length - 1 - suffixLength] === after[after.length - 1 - suffixLength]) suffixLength++;
+  const noNewline = (kind: 'addition' | 'removal') => block.some((line, index) => line.kind === 'meta' && block[index - 1]?.kind === kind);
+  return {
+    prefix: before.slice(0, prefixLength).join(''), before: before.slice(prefixLength, before.length - suffixLength).join(''),
+    after: after.slice(prefixLength, after.length - suffixLength).join(''), suffix: suffixLength ? before.slice(-suffixLength).join('') : '',
+    beforeLines: beforeRows.map(line => line.oldLine!), afterLines: afterRows.map(line => line.newLine!),
+    beforeNoNewline: noNewline('removal'), afterNoNewline: noNewline('addition'),
+  };
 }
 
 export function effectValue(effect: StyleEffect, position: number): string {

@@ -22,15 +22,20 @@ import (
 
 const MaxFileSize = 256 * 1024
 const MaxFiles = 10000
+const MaxDirectories = 10000
+const MaxPending = 10000
+const MaxBaselineBytes int64 = 64 * 1024 * 1024
 
 var skipped = map[string]bool{".git": true, ".stef": true, "node_modules": true, "dist": true, "build": true, "bin": true, "vendor": true, ".venv": true, "__pycache__": true, ".svelte-kit": true, ".next": true, "coverage": true}
 
 type Watcher struct {
-	root  string
-	fs    *fsnotify.Watcher
-	hub   *hub.Hub
-	files map[string]map[string]Symbol
-	git   bool
+	root          string
+	fs            *fsnotify.Watcher
+	hub           *hub.Hub
+	files         map[string]map[string]Symbol
+	dirs          map[string]bool
+	baselineBytes int64
+	git           bool
 }
 
 func New(root string, h *hub.Hub) (*Watcher, error) {
@@ -38,8 +43,10 @@ func New(root string, h *hub.Hub) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Watcher{root: root, fs: fw, hub: h, files: make(map[string]map[string]Symbol)}
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--is-inside-work-tree")
+	w := &Watcher{root: root, fs: fw, hub: h, files: make(map[string]map[string]Symbol), dirs: make(map[string]bool)}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "-c", "core.fsmonitor=false", "rev-parse", "--is-inside-work-tree")
 	w.git = cmd.Run() == nil
 	if err := w.scan(root, false); err != nil {
 		fw.Close()
@@ -56,6 +63,9 @@ func (w *Watcher) relative(name string) (string, bool) {
 		return "", false
 	}
 	rel = filepath.ToSlash(rel)
+	if sensitivePath(rel) {
+		return "", false
+	}
 	for _, part := range strings.Split(rel, "/") {
 		if skipped[part] {
 			return "", false
@@ -70,33 +80,72 @@ func (w *Watcher) gitIgnored(rel string) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", w.root, "check-ignore", "-q", "--", rel)
+	cmd := exec.CommandContext(ctx, "git", "-C", w.root, "-c", "core.fsmonitor=false", "check-ignore", "-q", "--", rel)
 	return cmd.Run() == nil
 }
 
 func (w *Watcher) read(name string) ([]byte, error) {
-	info, err := os.Lstat(name)
+	rel, ok := w.relative(name)
+	if !ok {
+		return nil, nil
+	}
+	// Pin each real directory before opening its child. This rejects aliases to
+	// private paths even when the symlink target itself remains inside the root.
+	root, err := os.OpenRoot(w.root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { root.Close() }()
+	parts := strings.Split(rel, "/")
+	for _, part := range parts[:len(parts)-1] {
+		entry, err := root.Lstat(part)
+		if err != nil {
+			return nil, err
+		}
+		if !entry.IsDir() || entry.Mode()&os.ModeSymlink != 0 {
+			return nil, nil
+		}
+		child, err := root.OpenRoot(part)
+		if err != nil {
+			return nil, err
+		}
+		opened, err := child.Stat(".")
+		if err != nil || !os.SameFile(entry, opened) {
+			child.Close()
+			return nil, nil
+		}
+		root.Close()
+		root = child
+	}
+	leaf := parts[len(parts)-1]
+	info, err := root.Lstat(leaf)
 	if err != nil {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > MaxFileSize {
 		return nil, nil
 	}
-	rel, ok := w.relative(name)
-	if !ok {
-		return nil, nil
-	}
-	// Root-confined open also prevents an ancestor symlink swap from escaping.
-	file, err := os.OpenInRoot(w.root, rel)
+	file, err := root.OpenFile(leaf, os.O_RDONLY|watcherOpenFlags, 0)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) || !singleSourceLink(file) {
+		return nil, nil // Reject a file/ancestor replacement between inspection and open.
+	}
+	entry, err := root.Lstat(leaf)
+	if err != nil || !entry.Mode().IsRegular() || !os.SameFile(entry, opened) {
+		return nil, nil
+	}
 	content, err := io.ReadAll(io.LimitReader(file, MaxFileSize+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(content) > MaxFileSize || !utf8.Valid(content) || strings.ContainsRune(string(content), 0) {
+	if len(content) > MaxFileSize || !utf8.Valid(content) || strings.ContainsRune(string(content), 0) || sensitiveContent(content) {
 		return nil, nil
 	}
 	return content, nil
@@ -128,7 +177,17 @@ func (w *Watcher) scanWithCapture(root string, emit, capture bool) error {
 			return nil
 		}
 		if entry.IsDir() {
-			return w.fs.Add(name)
+			if w.dirs[name] {
+				return nil
+			}
+			if len(w.dirs) >= MaxDirectories {
+				return fmt.Errorf("repository exceeds %d watched directories; choose a smaller root", MaxDirectories)
+			}
+			if err := w.fs.Add(name); err != nil {
+				return err
+			}
+			w.dirs[name] = true
+			return nil
 		}
 		if len(w.files) >= MaxFiles {
 			return fmt.Errorf("repository exceeds %d tracked files; choose a smaller root", MaxFiles)
@@ -141,7 +200,11 @@ func (w *Watcher) scanWithCapture(root string, emit, capture bool) error {
 			return err
 		}
 		if data != nil {
-			w.files[rel] = Extract(rel, data)
+			current := Extract(rel, data)
+			if err := w.checkBaseline(rel, current); err != nil {
+				return err
+			}
+			w.replaceBaseline(rel, current)
 		}
 		return nil
 	})
@@ -172,6 +235,9 @@ func (w *Watcher) Run(ctx context.Context) error {
 				continue
 			}
 			if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Remove|fsnotify.Rename) != 0 {
+				if _, exists := pending[event.Name]; !exists && len(pending) >= MaxPending {
+					continue // Bound memory during a filesystem event flood.
+				}
 				mode, epoch := w.hub.CaptureState()
 				state := captureState{enabled: mode == telemetry.UpdatesFiles, epoch: epoch}
 				if previous, exists := pending[event.Name]; exists && (!previous.enabled || previous.epoch != epoch) {
@@ -216,6 +282,11 @@ func (w *Watcher) processWithCapture(name string, capture bool) error {
 	}
 	content, err := w.read(name)
 	if os.IsNotExist(err) {
+		for directory := range w.dirs {
+			if directory == name || strings.HasPrefix(directory, name+string(filepath.Separator)) {
+				delete(w.dirs, directory)
+			}
+		}
 		// Removing a whole directory must remove its recorded descendants too.
 		names := []string{}
 		for file := range w.files {
@@ -228,7 +299,7 @@ func (w *Watcher) processWithCapture(name string, capture bool) error {
 			if err := w.changes(file, w.files[file], nil, capture); err != nil {
 				return err
 			}
-			delete(w.files, file)
+			w.replaceBaseline(file, nil)
 		}
 		return nil
 	}
@@ -236,17 +307,51 @@ func (w *Watcher) processWithCapture(name string, capture bool) error {
 		return err
 	}
 	if content == nil {
+		// Forget excluded revisions. Otherwise a later clean save/deletion could
+		// expose old credential contents from the cached baseline.
+		for file := range w.files {
+			if file == rel || strings.HasPrefix(file, rel+"/") {
+				w.replaceBaseline(file, nil)
+			}
+		}
 		return nil
 	}
 	if _, exists := w.files[rel]; !exists && len(w.files) >= MaxFiles {
 		return fmt.Errorf("tracked file limit reached")
 	}
 	current := Extract(rel, content)
+	if err := w.checkBaseline(rel, current); err != nil {
+		return err
+	}
 	if err := w.changes(rel, w.files[rel], current, capture); err != nil {
 		return err
 	}
-	w.files[rel] = current
+	w.replaceBaseline(rel, current)
 	return nil
+}
+
+func symbolBytes(symbols map[string]Symbol) int64 {
+	var size int64
+	for _, symbol := range symbols {
+		size += int64(len(symbol.Code))
+	}
+	return size
+}
+
+func (w *Watcher) checkBaseline(rel string, current map[string]Symbol) error {
+	if w.baselineBytes-symbolBytes(w.files[rel])+symbolBytes(current) > MaxBaselineBytes {
+		return fmt.Errorf("watched source exceeds the %d MiB baseline budget; choose a smaller root", MaxBaselineBytes/(1024*1024))
+	}
+	return nil
+}
+
+func (w *Watcher) replaceBaseline(rel string, current map[string]Symbol) {
+	w.baselineBytes += symbolBytes(current) - symbolBytes(w.files[rel])
+	if current == nil {
+		delete(w.files, rel)
+	} else {
+		w.files[rel] = current
+	}
 }
 
 func (w *Watcher) changes(file string, before, after map[string]Symbol, capture bool) error {

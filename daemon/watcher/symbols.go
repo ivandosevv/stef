@@ -81,6 +81,12 @@ func Extract(name string, content []byte) map[string]Symbol {
 }
 
 func Diff(name, before, after string) string {
+	// difflib's matcher can consume quadratic time on adversarial line patterns.
+	// Keep captured before/after previews while refusing an unbounded comparison.
+	const maxLines = 4000
+	if before != "" && after != "" && (strings.Count(before, "\n") > maxLines || strings.Count(after, "\n") > maxLines) {
+		return "Diff unavailable: local comparison exceeds the 4000-line safety limit."
+	}
 	diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{A: diffLines(before), B: diffLines(after), FromFile: "a/" + name, ToFile: "b/" + name, Context: 3})
 	if err != nil {
 		return "Diff unavailable"

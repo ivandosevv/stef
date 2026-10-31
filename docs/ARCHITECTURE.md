@@ -176,8 +176,12 @@ rationale show no invented reason. No hidden chain-of-thought is requested.
 - POST /api/explanation-reminder returns only current matching-path pending metadata, without offering notes.
 - /mcp exposes set_session, report_event, report_changes, and get_state through the SDK.
 
-Host/Origin checks confine network access to the local view. MCP stdout contains
-only protocol messages. Passive hooks and file watching never call a model.
+The listener accepts only loopback authority with its actual port. Exact browser
+Origin and Fetch Metadata checks reject unrelated local sites; development uses
+a guarded same-origin proxy. Native local processes remain trusted. CSP and
+stream validation protect display boundaries. MCP stdout contains only protocol
+messages. Passive hooks and file watching never call a model. See
+[Security](SECURITY.md) for the trust boundary and retention limits.
 
 --enable starts or attaches to a resident root-matched engine. IDE presentation
 is remembered in root-confined .stef/presentation.json, independently of MCP

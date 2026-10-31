@@ -1,9 +1,10 @@
 <script lang="ts">
   import { isFileChange, type AgentEvent } from '../lib';
   import { diffHunks, isTruncatedDiff, type DiffLine } from '../diff';
-  import { effectValue, lineKey, lineLabel, lineSuggestion, selectableLine, styleEffects, visibleLines, type DiffFilter } from '../interaction';
+  import { effectValue, lineKey, lineLabel, lineSuggestion, savedComparison, selectableLine, styleEffects, visibleLines, type DiffFilter } from '../interaction';
   import { milestoneAction, reportedParents } from '../visual';
   import DiffLines from './DiffLines.svelte';
+  import ChangeLens from './ChangeLens.svelte';
 
   let { step, steps, onselect, ondiff, onexplain, connected, asking, requestStatus, oninspect, onsuggest }: {
     step: AgentEvent;
@@ -32,6 +33,9 @@
   const shownLines = $derived(visibleLines(hunk ?? [], filter));
   let selection = $state<{ stepId: string; hunk: number; key: string } | null>(null);
   const selectedLine = $derived(selection?.stepId === step.id && selection.hunk === hunkIndex ? hunk?.find(line => lineKey(line) === selection?.key) : undefined);
+  const comparison = $derived(selectedLine && hunk ? savedComparison(hunk, selectedLine) : undefined);
+  const comparisonKey = $derived(selectedLine ? step.id + ':' + hunkIndex + ':' + lineKey(selectedLine) : '');
+  let openedComparison = $state('');
   const effects = $derived(file ? styleEffects(step.diff ?? '', step.node_name) : []);
   let preview = $state({ stepId: '', index: 0, position: 100, scrubbing: false });
   const effectIndex = $derived(preview.stepId === step.id ? Math.min(preview.index, Math.max(0, effects.length - 1)) : 0);
@@ -94,13 +98,14 @@
   {#if effect}
     <section class="effect-preview" aria-label="Style effect preview" data-testid="style-effect">
       <div class="effect-heading"><span class="section-label">Style sample</span>
-        {#if effects.length > 1}<select aria-label="Preview style property" value={effectIndex} onchange={event => changeEffect(100, Number(event.currentTarget.value))}>{#each effects as candidate, index}<option value={index}>{candidate.sourceProperty}</option>{/each}</select>
+        {#if effects.length > 1}<select aria-label="Preview style property" value={effectIndex} onchange={event => changeEffect(100, Number(event.currentTarget.value))}>{#each effects as candidate, index}<option value={index}>{candidate.sourceProperty}{effects.filter(item => item.sourceProperty === candidate.sourceProperty).length > 1 ? ' · ' + candidate.selector : ''}</option>{/each}</select>
         {:else}<span class="section-label">{effect.sourceProperty}</span>{/if}
       </div>
+      <p class="effect-scope"><code>{effect.selector}</code></p>
       <div class="effect-stage"><button type="button" class="effect-target" class:dimension={effect.property === 'height' || effect.property === 'width'} class:scrubbing={preview.stepId === step.id && preview.scrubbing} data-testid="style-effect-target" style={effect.property + ':' + effectValue(effect, effectPosition)} onclick={() => oninspect?.()}><span aria-hidden="true">●</span><span>Preview</span></button></div>
       <div class="effect-controls"><button type="button" aria-label="Before style" aria-pressed={effectPosition === 0} onclick={() => changeEffect(0)}>Before</button><input type="range" aria-label="Style effect position" min="0" max="100" value={effectPosition} oninput={event => changeEffect(Number(event.currentTarget.value), effectIndex, true)} /><button type="button" aria-label="After style" aria-pressed={effectPosition === 100} onclick={() => changeEffect(100)}>After</button></div>
       <div class="effect-values"><code>{effect.before}</code><span aria-hidden="true">→</span><code>{effect.after}</code></div>
-      <p class="sample-help">This sample previews the changed style, not the running app.</p>
+      <p class="sample-help">{effect.sourceProperty.startsWith('--') ? 'Color value sample. Usage in the app is not inferred.' : 'This sample previews the changed style, not the running app.'}</p>
     </section>
   {/if}
 
@@ -133,8 +138,9 @@
           {#if !shownLines.some(selectableLine)}<p class="filter-empty">No {filter === 'addition' ? 'added' : filter === 'removal' ? 'removed' : 'changed'} lines in this section.</p>{/if}
         </div>
         {/key}
-        {#if selectedLine}<div class="line-selection" aria-label="Selected line"><span>{lineLabel(selectedLine)}</span><div>{#if onsuggest}<button type="button" class="text-button" onclick={suggestLine}>Suggest about this line</button>{/if}<button type="button" class="text-button" aria-label="Clear line selection" onclick={() => { selection = null; oninspect?.(); }}>×</button></div></div>{/if}
-      {:else}<p class="notice">{step.diff ? 'No line preview is available for this saved revision.' : emptyMessage}</p>{/if}
+        {#if selectedLine}<div class="line-selection" aria-label="Selected line"><span>{lineLabel(selectedLine)}</span><div>{#if comparison}<button type="button" class="text-button" aria-expanded={openedComparison === comparisonKey} onclick={() => { openedComparison = openedComparison === comparisonKey ? '' : comparisonKey; oninspect?.(); }}>Compare line</button>{/if}{#if onsuggest}<button type="button" class="text-button" onclick={suggestLine}>Suggest about this line</button>{/if}<button type="button" class="text-button" aria-label="Clear line selection" onclick={() => { selection = null; oninspect?.(); }}>×</button></div></div>{/if}
+        {#if comparison && openedComparison === comparisonKey}{#key comparisonKey}<ChangeLens {comparison} {oninspect} />{/key}{/if}
+      {:else}<p class="notice">{step.diff?.startsWith('Diff unavailable') ? step.diff : step.diff ? 'No line preview is available for this saved revision.' : emptyMessage}</p>{/if}
       <button class="text-button full-diff" onclick={ondiff}>Show diff</button>
     </div>
   {/if}
@@ -176,6 +182,7 @@
   .effect-preview { margin-top: 20px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
   .effect-heading, .effect-values { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .effect-heading select { max-width: 60%; border: 0; background: var(--surface); color: var(--muted); font: inherit; font-size: 10px; }
+  .effect-scope { margin: 5px 0 0; color: var(--faint); font-size: 10px; overflow-wrap: anywhere; }
   .effect-stage { display: grid; place-items: center; min-height: 100px; padding: 10px; overflow: hidden; }
   .effect-target { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: max-content; max-width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--hover); color: var(--text); font: inherit; transition: box-shadow .15s, color .18s, background-color .18s, padding .18s, gap .18s, border-radius .18s, border-width .18s, font-size .18s, width .18s, height .18s, opacity .18s; }
   .effect-target.dimension { padding: 0; border-width: 0; overflow: hidden; }

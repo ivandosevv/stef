@@ -309,9 +309,39 @@ func newServer(b backend) *sdk.Server {
 	return server
 }
 func NewLocalServer(h *hub.Hub) *sdk.Server { return newServer(localBackend{hub: h}) }
+
+const transportIdleTimeout = 30 * time.Minute
+
 func NewHTTPHandler(h *hub.Hub) http.Handler {
+	return newHTTPHandler(h, transportIdleTimeout)
+}
+
+func newHTTPHandler(h *hub.Hub, idleTimeout time.Duration) http.Handler {
 	server := NewLocalServer(h)
-	return sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server }, nil)
+	handler := sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return server }, &sdk.StreamableHTTPOptions{SessionTimeout: idleTimeout, MaxRequestBodyBytes: 1024 * 1024})
+	return limitHTTPRequests(handler, 64)
+}
+
+// Legacy SSE listeners occupy a separate lane from tool requests. Companion
+// history and durable chat identity survive transport expiry and reconnects.
+func limitHTTPRequests(next http.Handler, maximum int) http.Handler {
+	requests := make(chan struct{}, maximum)
+	streams := make(chan struct{}, maximum)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lane := requests
+		if r.Method == http.MethodGet {
+			lane = streams
+		}
+		select {
+		case lane <- struct{}{}:
+			defer func() { <-lane }()
+		default:
+			w.Header().Set("Retry-After", "2")
+			http.Error(w, "too many local MCP requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type remoteBackend struct {

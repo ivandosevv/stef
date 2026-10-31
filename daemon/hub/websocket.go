@@ -2,6 +2,8 @@ package hub
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -14,8 +16,9 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid session_id", http.StatusBadRequest)
 		return
 	}
-	// Origin and Host are checked by the enclosing HTTP middleware.
-	upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 4096, CheckOrigin: func(*http.Request) bool { return true }}
+	// The enclosing HTTP middleware validates loopback authority and browser
+	// metadata. Retain an origin check here if another host mounts this handler.
+	upgrader := websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 4096, CheckOrigin: websocketOrigin}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -39,6 +42,10 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 			if _, _, err := conn.ReadMessage(); err != nil {
 				return
 			}
+			// This connection sends snapshots only. Feedback has a bounded JSON
+			// endpoint, so unsolicited data frames are neither needed nor replayed.
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "companion stream is read-only"), time.Now().Add(time.Second))
+			return
 		}
 	}()
 	ticker := time.NewTicker(25 * time.Second)
@@ -61,4 +68,29 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func websocketOrigin(r *http.Request) bool {
+	origins := r.Header.Values("Origin")
+	if len(origins) == 0 {
+		return true // Non-browser local clients do not send Origin.
+	}
+	if len(origins) != 1 {
+		return false
+	}
+	u, err := url.Parse(origins[0])
+	if err != nil || u.Scheme != "http" || origins[0] != "http://"+u.Host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+		return false
+	}
+	request, err := url.Parse("http://" + r.Host)
+	if err != nil {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if u.Port() == "" {
+			return "80"
+		}
+		return u.Port()
+	}
+	return strings.EqualFold(u.Hostname(), request.Hostname()) && port(u) == port(request)
 }

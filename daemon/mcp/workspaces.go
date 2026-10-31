@@ -43,6 +43,25 @@ type identityBindings struct {
 func newIdentityBindings() *identityBindings {
 	return &identityBindings{workers: make(map[*sdk.ServerSession]map[string]string)}
 }
+
+// The mutex is held by callers. Durable origins belong to the hub; transport
+// bindings only live until that MCP connection closes.
+func (ids *identityBindings) workersLocked(session *sdk.ServerSession) map[string]string {
+	if workers := ids.workers[session]; workers != nil {
+		return workers
+	}
+	workers := make(map[string]string)
+	ids.workers[session] = workers
+	if session != nil {
+		go func() {
+			_ = session.Wait()
+			ids.mu.Lock()
+			delete(ids.workers, session)
+			ids.mu.Unlock()
+		}()
+	}
+	return workers
+}
 func requestSession(req *sdk.CallToolRequest) *sdk.ServerSession {
 	if req == nil {
 		return nil
@@ -70,10 +89,7 @@ func (ids *identityBindings) selectSession(req *sdk.CallToolRequest, input Sessi
 	ids.mu.Lock()
 	defer ids.mu.Unlock()
 	key := requestSession(req)
-	if ids.workers[key] == nil {
-		ids.workers[key] = map[string]string{}
-	}
-	ids.workers[key][input.AgentID] = id
+	ids.workersLocked(key)[input.AgentID] = id
 	return id, nil
 }
 func (ids *identityBindings) resolve(ctx context.Context, b backend, req *sdk.CallToolRequest, explicit, agent string) (string, error) {
@@ -92,10 +108,8 @@ func (ids *identityBindings) resolve(ctx context.Context, b backend, req *sdk.Ca
 	ids.mu.Lock()
 	defer ids.mu.Unlock()
 	key := requestSession(req)
-	if ids.workers[key] == nil {
-		ids.workers[key] = map[string]string{}
-	}
-	id := ids.workers[key][agent]
+	workers := ids.workersLocked(key)
+	id := workers[agent]
 	if id == "" {
 		var random [16]byte
 		if _, err := rand.Read(random[:]); err != nil {
@@ -106,6 +120,6 @@ func (ids *identityBindings) resolve(ctx context.Context, b backend, req *sdk.Ca
 	if _, err := b.activate(ctx, id); err != nil {
 		return "", err
 	}
-	ids.workers[key][agent] = id
+	workers[agent] = id
 	return id, nil
 }

@@ -43,6 +43,9 @@ func (h *Hub) persist(data []byte) error {
 	if err != nil {
 		return err
 	}
+	if start > MaxJournalBytes-int64(len(data))-1 {
+		return fmt.Errorf("history reached the %d MiB journal limit; archive it or restart with --no-persist", MaxJournalBytes/(1024*1024))
+	}
 	if _, err = h.journal.Write(append(data, 10)); err == nil {
 		err = h.journal.Sync()
 	}

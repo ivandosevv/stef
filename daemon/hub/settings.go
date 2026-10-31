@@ -53,6 +53,9 @@ func (h *Hub) SetUpdateMode(mode telemetry.UpdateMode, session ...string) (telem
 			return telemetry.Settings{}, fmt.Errorf("invalid session_id")
 		}
 		id := h.resolveLocked(session[0])
+		if err := h.admitWorkspaceLocked(id); err != nil {
+			return telemetry.Settings{}, err
+		}
 		setting := h.settingLocked(id)
 		if mode != setting.Mode {
 			captureBefore := h.captureModeLocked()

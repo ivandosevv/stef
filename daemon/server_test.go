@@ -230,12 +230,15 @@ func TestRejectsInvalidRequestsAndRemoteOrigins(t *testing.T) {
 		{"multiple objects", validJSON() + validJSON(), "", "127.0.0.1:4820", "application/json", 400},
 		{"oversize request", strings.Repeat(" ", 128*1024) + validJSON(), "", "127.0.0.1:4820", "application/json", 400},
 		{"invalid path", strings.ReplaceAll(validJSON(), "main.go#Run", "../outside.go"), "", "127.0.0.1:4820", "application/json", 400},
-		{"allowed dev origin", validJSON(), "http://localhost:5173", "127.0.0.1:4820", "application/json", 201},
+		{"unrelated dev origin", validJSON(), "http://localhost:5173", "127.0.0.1:4820", "application/json", 403},
+		{"same origin", validJSON(), "http://127.0.0.1:4820", "127.0.0.1:4820", "application/json", 201},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("POST", "http://"+tc.host+"/api/events", strings.NewReader(tc.body))
-			request.Header.Set("Origin", tc.origin)
+			if tc.origin != "" {
+				request.Header.Set("Origin", tc.origin)
+			}
 			request.Header.Set("Content-Type", tc.contentType)
 			response := httptest.NewRecorder()
 			route.ServeHTTP(response, request)

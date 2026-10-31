@@ -62,13 +62,13 @@ func New(repo, journalPath string) (*Hub, error) {
 		}
 		return h, nil
 	}
-	file, err := os.OpenFile(journalPath, os.O_CREATE|os.O_RDWR, 0600)
+	file, err := openJournal(repo, journalPath)
 	if err != nil {
 		return nil, fmt.Errorf("open event journal: %w", err)
 	}
 	// A partial last line from an interrupted write is truncated on recovery.
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 4096), 256*1024)
+	scanner.Buffer(make([]byte, 4096), MaxJournalRecord)
 	var offset int64
 	for scanner.Scan() {
 		raw := scanner.Bytes()
@@ -132,6 +132,10 @@ func New(repo, journalPath string) (*Hub, error) {
 		offset += int64(len(raw) + 1)
 		if event.SessionID == "" {
 			event.SessionID = "local"
+		}
+		if err := h.admitWorkspaceLocked(event.SessionID); err != nil {
+			file.Close()
+			return nil, err
 		}
 		h.store(event)
 		if id, err := strconv.ParseUint(event.ID, 10, 64); err == nil && id > h.next {

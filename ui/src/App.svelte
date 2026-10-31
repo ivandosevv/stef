@@ -9,6 +9,7 @@
   import ChangeVisual from './components/ChangeVisual.svelte';
   import { readDesign, saveDesign, type Design } from './design';
   import { hasFileDiff } from './diff';
+  import { isWorkspaceList } from './stream-security';
   import { connectStream, isEmbedded, sendToHost } from './transport';
   import { workflowSteps, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode, type Workspace, type StreamMessage } from './lib';
 
@@ -251,7 +252,8 @@
     const response = await fetch('/api/workspaces');
     if (!response.ok) throw new Error('Could not load workspaces.');
     const catalog = await response.json();
-    workspaces = Array.isArray(catalog.workspaces) ? catalog.workspaces : [];
+    if (!isWorkspaceList(catalog.workspaces)) throw new Error('Could not load workspaces.');
+    workspaces = catalog.workspaces;
     return String(catalog.current_workspace_id ?? 'local');
   }
   async function changeSharing(action: 'create' | 'join' | 'leave', workspaceID?: string) {

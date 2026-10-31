@@ -19,6 +19,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Get-StefResource([string]$Url, [long]$Maximum) {
     $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $false
     $clientHttp = New-Object System.Net.Http.HttpClient -ArgumentList $handler
     $cancel = New-Object System.Threading.CancellationTokenSource
     $cancel.CancelAfter(60000)
@@ -27,11 +28,19 @@ function Get-StefResource([string]$Url, [long]$Maximum) {
     $stream = $null
     $memory = New-Object System.IO.MemoryStream
     try {
-        $response = $clientHttp.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cancel.Token).GetAwaiter().GetResult()
+        $current = [Uri]$Url
+        for ($redirects = 0; ; $redirects++) {
+            Assert-StefDownloadUri $current
+            $response = $clientHttp.GetAsync($current, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cancel.Token).GetAwaiter().GetResult()
+            if ([int]$response.StatusCode -notin @(301, 302, 303, 307, 308)) { break }
+            if ($redirects -ge 5 -or -not $response.Headers.Location) { throw 'GitHub returned an invalid or excessive redirect chain.' }
+            $next = New-Object System.Uri -ArgumentList $current, $response.Headers.Location
+            Assert-StefDownloadUri $next
+            $response.Dispose()
+            $response = $null
+            $current = $next
+        }
         if (-not $response.IsSuccessStatusCode) { throw ('GitHub returned HTTP ' + [int]$response.StatusCode) }
-        $final = $response.RequestMessage.RequestUri
-        $allowed = @('github.com', 'api.github.com', 'raw.githubusercontent.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com')
-        if ($final.Scheme -ne 'https' -or $allowed -notcontains $final.Host) { throw 'GitHub redirected outside its HTTPS release hosts.' }
         $length = $response.Content.Headers.ContentLength
         if ($null -ne $length -and $length -gt $Maximum) { throw 'The GitHub download is too large.' }
         $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
@@ -47,6 +56,13 @@ function Get-StefResource([string]$Url, [long]$Maximum) {
         $memory.Dispose()
         $clientHttp.Dispose()
         $cancel.Dispose()
+    }
+}
+
+function Assert-StefDownloadUri([Uri]$Uri) {
+    $allowed = @('github.com', 'api.github.com', 'raw.githubusercontent.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com', 'github-releases.githubusercontent.com')
+    if (-not $Uri.IsAbsoluteUri -or $Uri.Scheme -ne 'https' -or $allowed -notcontains $Uri.Host -or $Uri.UserInfo -or -not $Uri.IsDefaultPort -or $Uri.Fragment) {
+        throw 'GitHub redirected outside its HTTPS release hosts.'
     }
 }
 
@@ -72,12 +88,21 @@ function Get-StefFileHash([string]$Path) {
 }
 
 function Assert-RuntimePaths([string]$Project) {
-    foreach ($relative in @('.stef', '.stef/runtime', '.stef/runtime/bin')) {
+    foreach ($relative in @('.stef', '.stef/runtime', '.stef/runtime/bin', '.stef/runtime/bootstrap')) {
         $path = Join-Path $Project $relative
-        if (Test-Path -LiteralPath $path) {
-            $item = Get-Item -LiteralPath $path -Force
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        if ($item) {
             if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
                 throw 'Keep .stef/runtime inside the project without directory links or junctions.'
+            }
+        }
+    }
+    foreach ($relative in @('.stef/runtime/LICENSE', '.stef/runtime/bin/stef.exe', '.stef/runtime/bootstrap/install.py')) {
+        $path = Join-Path $Project $relative
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        if ($item) {
+            if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw 'Existing stef runtime files must be regular files without links.'
             }
         }
     }
@@ -141,6 +166,7 @@ function Invoke-StefSource([string]$Project, [string]$RuntimeRoot) {
         }
         $bootstrap = Join-Path $RuntimeRoot 'bootstrap'
         [IO.Directory]::CreateDirectory($bootstrap) | Out-Null
+        Assert-RuntimePaths $Project
         $installer = Join-Path $bootstrap 'install.py'
         [IO.File]::WriteAllBytes($installer, (Get-StefResource 'https://raw.githubusercontent.com/ivandosevv/stef/master/install.py' 2097152))
     }

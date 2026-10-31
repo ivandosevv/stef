@@ -68,6 +68,9 @@ func (h *Hub) replayWorkspaceNameLocked(id, name string) error {
 }
 
 func (h *Hub) ensureWorkspaceNameLocked(id string) error {
+	if err := h.admitWorkspaceLocked(id); err != nil {
+		return err
+	}
 	if h.workspaceNames[id] != "" {
 		return nil
 	}
@@ -86,6 +89,9 @@ func (h *Hub) ensureWorkspaceNameLocked(id string) error {
 // Migration appends labels only after replay and recovery. It never rewrites
 // history, capture IDs, settings, or memberships.
 func (h *Hub) migrateWorkspaceNamesLocked() error {
+	if err := h.admitWorkspaceLocked(); err != nil {
+		return err
+	}
 	ids := make([]string, 0, len(h.sessions))
 	for id := range h.sessions {
 		ids = append(ids, id)

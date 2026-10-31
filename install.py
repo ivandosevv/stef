@@ -47,6 +47,23 @@ def project_root(value):
 
 
 def confined(project, path):
+    try:
+        parts = path.relative_to(project).parts
+    except ValueError as error:
+        raise InstallError("The stef runtime must stay inside your project.") from error
+    current = project
+    for part in parts:
+        current = current / part
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            break
+        # Include Windows junctions/reparse points and dangling leaf links.
+        reparse = getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        if stat.S_ISLNK(info.st_mode) or reparse:
+            raise InstallError("Existing stef runtime paths must not contain links or junctions.")
+        if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+            raise InstallError("Existing stef runtime paths must be regular files or directories.")
     resolved = path.resolve()
     if project not in resolved.parents:
         raise InstallError("The stef runtime escapes the project through a symlink; keep .stef inside your project.")
@@ -304,6 +321,10 @@ def install(args):
     project = project_root(args.repo)
     confined(project, project / ".stef/runtime")
     goos, goarch = target()
+    # Refuse every destination before downloads, setup, or replacing either
+    # file, so a linked LICENSE cannot leave a partially updated binary.
+    confined(project, project / ".stef/runtime/LICENSE")
+    confined(project, project / ".stef/runtime/bin" / ("stef.exe" if goos == "windows" else "stef"))
     payload = None if args.source else release_payload(args.release or "latest", goos, goarch)
     if payload:
         archive, extension, version = payload
