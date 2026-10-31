@@ -18,7 +18,7 @@
       <div class="rationale"><span class="eyebrow">{event.source === 'watcher' ? 'FILESYSTEM OBSERVATION' : 'DECISION RATIONALE'}</span><p>{event.why}</p></div>
       <div class="diff-header"><strong>{codeEvent && !codeEvent.diff ? 'Code snapshot' : codeEvent?.kind === 'file' ? 'File diff' : 'Code diff'}</strong><span>{codeEvent ? codeEvent.language ?? 'code' : 'awaiting code'}</span></div>
       {#if displayDiff}
-        <pre class="code-diff" aria-label="Code diff">{#each displayDiff.split('\n') as line}<span class:added={line.startsWith('+') && !line.startsWith('+++')} class:removed={line.startsWith('-') && !line.startsWith('---')} class:hunk={line.startsWith('@@')}>{line || ' '}</span>{/each}</pre>
+        <pre class="code-diff" aria-label="Code diff">{#each displayDiff.split('\n') as line, index (index)}<span class:added={line.startsWith('+') && !line.startsWith('+++')} class:removed={line.startsWith('-') && !line.startsWith('---')} class:hunk={line.startsWith('@@')}>{line || ' '}</span>{/each}</pre>
       {:else}
         <div class="no-diff">No code attached yet. File tracking adds diffs when this node changes in the watched repository.</div>
       {/if}

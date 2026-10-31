@@ -14,7 +14,7 @@
   <div class="lens-heading"><span>Saved change</span><div role="group" aria-label="Compare saved source"><button type="button" aria-pressed={side === 'before'} onclick={() => choose('before')}>Before</button><button type="button" aria-pressed={side === 'after'} onclick={() => choose('after')}>After</button></div></div>
   <p class="line-range" aria-live="polite">{lineRange}{noNewline ? ' · No newline at end of file' : ''}</p>
   <div class="source-stage">
-    {#each sourceSides as value}
+    {#each sourceSides as value (value)}
       <pre class:active={side === value} aria-hidden={side !== value} data-testid={'comparison-' + value}><code>{#if (value === 'before' ? comparison.beforeLines : comparison.afterLines).length}{comparison.prefix}<mark data-side={value}>{comparison[value]}</mark>{comparison.suffix}{:else}<span class="empty-side">No source lines on this side.</span>{/if}</code></pre>
     {/each}
   </div>

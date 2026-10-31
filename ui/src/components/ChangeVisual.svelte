@@ -100,7 +100,7 @@
   {#if effect}
     <section class="effect-preview" aria-label="Style effect preview" data-testid="style-effect">
       <div class="effect-heading"><span class="section-label">Style sample</span>
-        {#if effects.length > 1}<select aria-label="Preview style property" value={effectIndex} onchange={event => changeEffect(100, Number(event.currentTarget.value))}>{#each effects as candidate, index}<option value={index}>{candidate.sourceProperty}{effects.filter(item => item.sourceProperty === candidate.sourceProperty).length > 1 ? ' · ' + candidate.selector : ''}</option>{/each}</select>
+        {#if effects.length > 1}<select aria-label="Preview style property" value={effectIndex} onchange={event => changeEffect(100, Number(event.currentTarget.value))}>{#each effects as candidate, index (index)}<option value={index}>{candidate.sourceProperty}{effects.filter(item => item.sourceProperty === candidate.sourceProperty).length > 1 ? ' · ' + candidate.selector : ''}</option>{/each}</select>
         {:else}<span class="section-label">{effect.sourceProperty}</span>{/if}
       </div>
       <p class="effect-scope"><code>{effect.selector}</code></p>
@@ -116,7 +116,7 @@
       {#if truncated}<p class="notice" data-testid="visual-truncation">Preview truncated. Only the captured portion is available.</p>{/if}
       {#if hunk}
         <section class="change-map" aria-label="Change map">
-          {#each hunks as lines, index}
+          {#each hunks as lines, index (index)}
             {@const added = lines.filter(line => line.kind === 'addition').length}
             {@const removed = lines.filter(line => line.kind === 'removal').length}
             <button type="button" class="map-hunk" class:active={hunkIndex === index} data-testid="hunk-map" aria-label={'Explore hunk ' + (index + 1) + ': ' + removed + ' removed, ' + added + ' added'} aria-pressed={hunkIndex === index} title={lines[0]?.text} onclick={() => chooseHunk(index)}>
@@ -131,7 +131,7 @@
             <div class="hunk-buttons"><button aria-label="Previous hunk" disabled={hunkIndex === 0} onclick={() => moveHunk(-1)}>←</button><button aria-label="Next hunk" disabled={hunkIndex >= hunks.length - 1} onclick={() => moveHunk(1)}>→</button></div>
           </div>
         {/if}
-        <details class="filter-tools"><summary onclick={() => oninspect?.()}>Filter source</summary><div class="diff-filters" role="group" aria-label="Visible diff lines">{#each filters as item}<button type="button" aria-label={item.accessible} aria-pressed={filter === item.value} onclick={() => changeFilter(item.value)}>{item.label}</button>{/each}</div></details>
+        <details class="filter-tools"><summary onclick={() => oninspect?.()}>Filter source</summary><div class="diff-filters" role="group" aria-label="Visible diff lines">{#each filters as item (item.value)}<button type="button" aria-label={item.accessible} aria-pressed={filter === item.value} onclick={() => changeFilter(item.value)}>{item.label}</button>{/each}</div></details>
         {#key step.id + ':' + hunkIndex}
         <!-- The selected-change pane owns scrolling; source rows support keyboard selection. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->

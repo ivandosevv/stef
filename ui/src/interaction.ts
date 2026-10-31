@@ -113,7 +113,7 @@ function declarations(lines: DiffLine[], kind: 'addition' | 'removal', path: str
       else nested = true;
       depth++;
     } else if (clean[index] === '}') {
-      if (depth > 0 && --depth === 0 && !nested && selector && /^[.#:\[\]\w\s>,+~*()=-]+$/.test(selector)) {
+      if (depth > 0 && --depth === 0 && !nested && selector && /^[.#:[\]\w\s>,+~*()=-]+$/.test(selector)) {
         // Complete flat rules only. At-rule/nesting scope, quoted selectors,
         // partial declarations and source strings are intentionally unsupported.
         const scope = selector.replace(/\s+/g, ' ');

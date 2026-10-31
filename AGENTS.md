@@ -112,7 +112,9 @@ Keep both accurate; do not describe planned functionality as implemented.
 
 Ivan requested regular progress checkpoints to
 https://github.com/ivandosevv/stef. After completing and verifying a meaningful
-milestone, commit the project source and push to the existing master branch.
+milestone, commit the project source on a branch and open a pull request into master.
+Ivan now requires PRs: wait for required checks, resolve review conversations,
+and squash merge through GitHub. Never push directly to master or bypass protection.
 Preserve remote history, use clear commit messages, and never force-push. Inspect
 the staged files first; keep credentials, local client configuration, runtime
 history, test artifacts, caches, and generated output out of commits. This

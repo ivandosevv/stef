@@ -1,4 +1,4 @@
-.PHONY: install ui engine build run dev test check clean extension check-extension test-extension release test-native configure-codex test-codex test-claude test-claude-home
+.PHONY: install ui engine build run dev test check lint clean extension check-extension test-extension release test-native configure-codex test-codex test-claude test-claude-home
 ROOT := $(CURDIR)
 REPO ?= $(ROOT)/examples/sandbox
 PORT ?= 4820
@@ -32,6 +32,10 @@ test: engine
 check:
 	cd daemon && go vet ./...
 	cd ui && npm run check
+
+lint:
+	python3 scripts/lint.py
+	cd daemon && go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 ../.github/workflows/*.yml
 
 clean:
 	rm -rf bin ui/dist ui/test-results ui/playwright-report

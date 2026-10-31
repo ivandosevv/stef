@@ -11,6 +11,7 @@
   const width = $derived(Math.max(240, Math.min(availableWidth, 560)));
   const nodeWidth = $derived(Math.min(320, width - 56));
   let decisionHeights = $state<Record<string, number>>({});
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Observer bookkeeping; decisionHeights supplies render state.
   const decisionCards = new Map<HTMLElement, string>();
   let decisionObserver: ResizeObserver | undefined;
   let decisionFrame = 0;

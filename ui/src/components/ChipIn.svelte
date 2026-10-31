@@ -27,7 +27,7 @@
   <div class="chip-heading"><div><span class="eyebrow">MAKE THIS A CONVERSATION</span><h2>Chip in while they work.</h2></div><span class="tiny-tag">{demo ? 'DEMO' : 'NEXT CHECK-IN'}</span></div>
   <p class="chip-context">{node ? 'About ' + node : 'About the current workflow'} <span>· Questions, suggestions, and concerns stay visible in your session.</span></p>
   <form onsubmit={submit}>
-    <div class="chip-controls"><label>Type<select aria-label="Note type" bind:value={kind}><option value="question">Question</option><option value="suggestion">Suggestion</option><option value="concern">Concern</option></select></label><label>For<select aria-label="Note recipient" bind:value={target}><option value="*">All reporting agents</option>{#each agents as agent}<option value={agent}>{agent}</option>{/each}</select></label></div>
+    <div class="chip-controls"><label>Type<select aria-label="Note type" bind:value={kind}><option value="question">Question</option><option value="suggestion">Suggestion</option><option value="concern">Concern</option></select></label><label>For<select aria-label="Note recipient" bind:value={target}><option value="*">All reporting agents</option>{#each agents as agent (agent)}<option value={agent}>{agent}</option>{/each}</select></label></div>
     <label class="sr-only" for="stef-note">Your note</label><textarea id="stef-note" placeholder="Is this handling the edge case we discussed?" bind:value={text} rows="3" disabled={!enabled || busy}></textarea>
     <div class="chip-submit"><small>{length}/500</small><button class="primary-button" type="submit" disabled={!enabled || busy || !text.trim() || length > 500}>{busy ? 'Queuing…' : 'Queue note'} <span>↗</span></button></div>
   </form>

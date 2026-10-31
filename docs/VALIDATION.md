@@ -28,6 +28,22 @@ These checks verify stef and its MCP transport. Client-specific task and pane
 verification remains listed in [CLIENTS.md](CLIENTS.md). Normal MCP trust, reload,
 or import steps still belong to the client. No public Homebrew tap was tested.
 
+## Pull request checks, 2026-10-31
+
+- make lint passes Go formatting/vet, recommended JavaScript/TypeScript/Svelte
+  linting, type checks, and pinned actionlint workflow validation.
+- make check, make test, and make build pass, including Go race checks and 60 UI
+  unit tests. All 53 browser tests pass, including repeated style properties
+  across separate saved diff hunks.
+- PRs run seven browser smoke cases plus the macOS, Windows, and Linux checks.
+  Master pushes and manual runs retain the full browser suite.
+- GitHub master protection requires PRs and all five check jobs, including for
+  administrators, with resolved conversations and squash merging. Human approval
+  remains optional for the single maintainer. Force pushes and deletion are blocked.
+- Runtime npm audit is clean. The full audit has only documented low/moderate
+  development advisories; CI blocks high/critical tooling issues and all runtime
+  advisories. See [Security](SECURITY.md).
+
 ## Historical validation, 2026-10-30
 
 Earlier notes below describe each increment and its limits at that time.

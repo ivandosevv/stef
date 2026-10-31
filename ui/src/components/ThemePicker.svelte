@@ -44,7 +44,7 @@
   </button>
   {#if open}
     <div class="appearance-menu" bind:this={menu} role="menu" aria-label="Appearance" tabindex="-1" onkeydown={navigate}>
-      {#each themeOptions as option}
+      {#each themeOptions as option (option.value)}
         <button class="appearance-option" role="menuitemradio" aria-checked={theme === option.value} tabindex={theme === option.value ? 0 : -1} onclick={() => pick(option.value)}>
           <span>{option.label}</span><span aria-hidden="true">{theme === option.value ? '✓' : ''}</span>
         </button>
