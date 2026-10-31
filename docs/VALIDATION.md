@@ -673,3 +673,38 @@ These collaboration checks use MCP clients, not simultaneous authenticated
 Claude and Codex model tasks. Anonymous workers still need distinct reporter
 IDs supplied by their host or the agent skill. Shared context contains recorded
 steps and user-facing explanations, with no background model calls.
+
+## Security hardening and saved-source comparison
+
+Source checkpoint 41a4afe passed the
+[macOS, Windows, and Linux checks](https://github.com/ivandosevv/stef/actions/runs/41233555678).
+Go 1.26.10 and the patched Windows system dependency pass govulncheck. Runtime
+npm dependencies have no reported advisories; the remaining low-severity build
+dependency advisory is documented in [Security](SECURITY.md).
+
+- Local make check and make test pass, including Go race tests and 51 UI tests.
+  All 38 final Playwright scenarios pass, including both designs, exact saved
+  diffs, independent panes, private/sharing behavior, hostile messages, escaped
+  source, and the new on-demand comparison lens.
+- Regression cases reject cross-origin WebSockets, malformed browser authority,
+  oversized MCP bodies, stalled request bodies, linked journals and installer
+  targets, substituted FIFO/source handles, credential capture, and capacity
+  overflows. Idle MCP transport cleanup preserves durable chat identities.
+- The Python installer has 14 passing tests, POSIX installer 20, bootstrap 7,
+  and package checks 5. All six stock PowerShell installer regressions passed
+  on Windows CI. Windows hub/watcher test binaries also cross-compile locally.
+- The actual native Mac renderer, clean stdio, feedback, and owned shutdown pass.
+  The development proxy supports its own browser HTTP/WS traffic and rejects a
+  foreign origin with 403. Browser comparison/source/style controls make no
+  external or automatic AI-context requests.
+- The personal daemon was reloaded with its four workspace records, shared
+  Mellow Wren 1341 membership, Every file window, and journal bytes preserved.
+  A real browser inspected 93 retained current steps and the new comparison lens
+  with zero JavaScript errors, API mutations, or external requests. All new
+  owned saved-file changes had exact explanations; no pending reasons remained.
+
+These checks do not certify every real IDE frame or authenticated model task.
+Native local processes remain trusted, Clear does not erase journal bytes,
+aggregate retained event memory needs a global budget, and public v0.3.0 release
+packages predate this checkpoint. Agent-written reasons still consume tokens in
+the working agent; stef adds no background inference.
