@@ -780,3 +780,29 @@ the working agent; stef adds no background inference.
 - Reloaded the personal daemon on port 4825, preserving its four workspaces,
   shared membership, history, mode, and recording window. A fresh MCP connection
   received the updated guidance. Existing client bridges need reconnection.
+
+## Visible decision summaries checkpoint, 2026-10-31
+
+- All activity guidance requests a brief public next-action reason before the
+  first meaningful action group and when purpose or approach changes. It reuses
+  an 8–20 word sentence, skips repeated intent and housekeeping, and leaves exact
+  saved-file reasons required. It does not collect private internal transcripts.
+- Decision reasons stay visible after newer tools are selected. Minimal shows
+  its selected reason once; Interactive keeps it in the graph and properties.
+  Local measured heights keep wrapped text and arrows aligned. ResizeObserver
+  updates run on animation frames and clean up on teardown.
+- make check, make test (Go race checks and 60 UI tests), make build, and all
+  52 browser cases passed. Independent review found one selected Minimal long
+  identifier wrapping defect; the scoped fix passed checks/build and both
+  expanded narrow-view regressions. No other concrete review findings remained.
+- Isolated current-source review verified escaped text, recording-window resets,
+  observer cleanup, and paused selection with zero API writes or browser and
+  ResizeObserver errors. Both updated skill entrypoints passed validation.
+- The personal daemon reload preserved all four workspaces, shared membership,
+  history, mode, and recording window. Read-only live browser checks in both
+  designs confirmed the newest decision reason was in view, older decisions
+  stayed readable, narrow layouts fit, and Follow latest resumed selection.
+  Inspection issued no API writes or page errors. Existing bridges need MCP
+  reconnection for the new guidance, and the existing tab needs refreshing.
+- No extra model is started. Decision summaries are agent output and may use
+  tokens; local rendering does not generate more text or poll for explanations.

@@ -39,7 +39,7 @@ test('All activity records distinct operations, decisions and exact saved revisi
   await page.getByRole('button', { name: 'Updates', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'Updates', exact: true });
   await expect(menu.getByRole('menuitemradio')).toHaveCount(4);
-  await expect(menu).toContainText('More agent reports may use tokens. Private thinking is not exposed.');
+  await expect(menu).toContainText('Private thinking is not exposed.');
   await page.keyboard.press('End');
   await expect(page.getByRole('menuitemradio', { name: 'Disabled', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowUp');
@@ -182,3 +182,69 @@ test('returning to All activity opens a new window without revealing hidden file
   await expect(page.getByTestId('workflow-step')).toHaveCount(2);
   await expect(firstStep).toHaveAttribute('aria-pressed', 'true');
 });
+
+for (const design of ['minimal', 'interactive'] as const) {
+  test(design + ' keeps short decision reasons visible while actions advance', async ({ page, request }) => {
+    const session = 'visible-decision-' + design;
+    const errors: string[] = [], writes: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await start(page, request, session);
+    await pick(page, 'activity');
+    await page.getByRole('button', { name: 'Design', exact: true }).click();
+    await page.getByRole('menuitemradio', { name: design === 'minimal' ? 'Minimal' : 'Interactive', exact: true }).click();
+    const reason = 'I’m checking startup because the saved preference resets before the interface mounts.';
+    const decision = await report(request, session, 'decided', 'Check startup first', reason, { node_name: 'startup.ts' });
+    const button = page.getByRole('button', { name: 'Check startup first', exact: true });
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    const row = page.locator('foreignObject').filter({ has: button });
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await activity(request, session, 'reading', 'Read');
+    await expect(page.getByTestId('workflow-step')).toHaveCount(2);
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await expect(page.getByTestId('workflow-arrow')).toHaveCount(1);
+    const data = await events(request, session);
+    expect(data[0].id).toBe(decision.event.id);
+    expect(data[0].source).toBe('agent');
+    expect(data[0].why).toBe(reason);
+    expect(data[1].source).toBe('hook');
+    page.on('request', outgoing => {
+      if (outgoing.method() !== 'GET' && new URL(outgoing.url()).pathname.startsWith('/api/')) writes.push(new URL(outgoing.url()).pathname);
+    });
+    await page.setViewportSize({ width: 320, height: 640 });
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await expect.poll(() => row.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      const last = element.querySelector('p')?.getBoundingClientRect();
+      return Boolean(last && last.bottom <= bounds.bottom + 1 && last.left >= bounds.left - 1 && last.right <= bounds.right + 1);
+    })).toBe(true);
+    const reasonBounds = await row.getByText(reason, { exact: true }).boundingBox();
+    const nextBounds = await page.getByTestId('workflow-step').last().boundingBox();
+    expect(reasonBounds!.y + reasonBounds!.height).toBeLessThan(nextBounds!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await button.click();
+    await expect(row.getByText(reason, { exact: true })).toHaveCount(1);
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await activity(request, session, 'tool_done', 'Read');
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    const identifier = 'bindWorkerToPrivateOrExplicitlySharedWorkspaceBeforeAcceptingAgentActivity';
+    const longReason = 'I’m checking ' + identifier + ' because new private sessions must bind before any agent activity enters the workspace.';
+    await report(request, session, 'decided', 'Inspect session binding', longReason, { node_name: 'binding.ts' });
+    const binding = page.getByRole('button', { name: 'Inspect session binding', exact: true });
+    const bindingRow = page.locator('foreignObject').filter({ has: binding });
+    await expect(bindingRow.getByText(longReason, { exact: true })).toBeVisible();
+    await binding.click();
+    await expect(bindingRow.getByText(longReason, { exact: true })).toHaveCount(1);
+    await expect.poll(() => bindingRow.evaluate(element => {
+      const text = element.querySelector('p')!;
+      const bounds = element.getBoundingClientRect(), prose = text.getBoundingClientRect();
+      return text.scrollWidth <= text.clientWidth + 1 && prose.left >= bounds.left - 1 && prose.right <= bounds.right + 1 && prose.bottom <= bounds.bottom + 1;
+    })).toBe(true);
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}

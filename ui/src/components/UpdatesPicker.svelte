@@ -6,7 +6,7 @@
   const options = [
     { value: 'milestones', label: 'Major milestones', detail: 'New key steps only, with brief explanations.' },
     { value: 'files', label: 'Every file', detail: 'New saves from now on. Per-file explanations may use more tokens.' },
-    { value: 'activity', label: 'All activity', detail: 'Available tool activity and shared decisions. More agent reports may use tokens. Private thinking is not exposed.' },
+    { value: 'activity', label: 'All activity', detail: 'Tool activity and short explanations before actions. More agent reports may use tokens. Private thinking is not exposed.' },
     { value: 'disabled', label: 'Disabled', detail: 'Stop new updates. Keep saved history.' },
   ] as const;
   const label = $derived(mode === 'milestones' ? 'Milestones' : mode === 'disabled' ? 'Disabled' : mode === 'activity' ? 'All activity' : 'Every file');

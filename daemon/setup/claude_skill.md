@@ -64,10 +64,16 @@ start model calls. Updates and Clear apply to the selected workspace. Never poll
   reply. Batch every changed file, including helpers, tests, and cooperating
   agents' edits when they explicitly share this workspace. Use 2 to 4 word
   summaries and one short user-facing reason.
-- activity: follow the exact file reporting rule above, and share brief public
-  decisions through report_event action=decided when useful. Available sanitized
-  hook stages appear locally. Never send private thinking, prompts, commands,
-  or raw tool output. Extra agent reports may use tokens; do not backfill older activity.
+- activity: follow the exact file reporting rule above. Before the first
+  meaningful action group and when its purpose or approach changes, call
+  report_event action=decided with the next action/path and why. Reuse one public
+  sentence (typically 8–20 words), a 2–4 word summary, relevant node_name, and
+  actual parents. Report before the action. Skip repeated intent, tool-by-tool
+  or housekeeping narration, and duplicate chat prose. Do not repeat the same
+  intent per file; exact file reasons remain required. Available hook stages are
+  observations, not invented reasons. Never send private thinking, prompts,
+  commands, or raw tool output. Extra reports may use tokens; do not backfill.
+  Do not send new decided reports in milestones, files, or disabled.
 - disabled: stop reporting and extra check-ins for this turn. Recheck the mode
   at the next task's start.
 

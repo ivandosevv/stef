@@ -88,6 +88,10 @@ header { height: 46px; margin: 0 20px; display: flex; align-items: center; justi
 .step { display: block; width: 100%; height: 38px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--label); text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .step:hover { background: var(--hover); border-color: var(--border); }
 .step.selected { background: var(--selected); border-color: var(--selected-border); color: var(--text); }
+.step-card { display: flow-root; }
+.decision-type { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.decision-summary { margin: 6px 12px 8px; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.step-card.decision .step-detail p { overflow-wrap: anywhere; }
 .empty { height: 240px; display: grid; place-items: center; color: var(--faint); font-size: 12px; }
 .step-detail { margin: 10px 8px 0; padding: 0 8px; }
 .step-detail p { font-size: 12px; line-height: 1.5; color: var(--muted); margin: 0 0 7px; }

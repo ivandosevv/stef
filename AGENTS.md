@@ -15,7 +15,13 @@ tracking and hook ingestion must make no model calls. Respect the current worksp
 setting: milestones reports only major steps with reasons; files captures and
 explains each saved revision; activity also shows available sanitized tool stages
 and brief agent-shared decisions; disabled stops new recording/reporting.
-In activity, report a concise public choice with action=decided when useful.
+In activity, before the first meaningful action group and when its purpose or
+approach changes, report_event action=decided with the next action/path and why.
+Reuse one short public sentence (typically 8–20 words), a 2–4 word summary, and
+actual related parents. Skip repeated intent, tool-by-tool or housekeeping
+narration, and duplicate chat prose. Do not repeat the same intent per file;
+exact saved-file reasons remain required. Report new intent before the action,
+only while activity is selected, without polling or backfilling earlier work.
 Never submit internal reasoning transcripts, prompts, raw commands, or raw tool output.
 Reuse an existing concise public explanation as why; do not generate a duplicate.
 report_changes accepts common summary/why for exact change_id entries with the

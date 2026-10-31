@@ -10,10 +10,40 @@
   let availableWidth = $state(560);
   const width = $derived(Math.max(240, Math.min(availableWidth, 560)));
   const nodeWidth = $derived(Math.min(320, width - 56));
+  let decisionHeights = $state<Record<string, number>>({});
+  const decisionCards = new Map<HTMLElement, string>();
+  let decisionObserver: ResizeObserver | undefined;
+  let decisionFrame = 0;
+  const isDecision = (step: AgentEvent) => step.source === 'agent' && step.action === 'decided';
+  const showDecisionReason = (step: AgentEvent) => isDecision(step) && Boolean(step.why) && (selected !== step.id || localScroll);
+  function measureDecision(node: HTMLElement, id?: string) {
+    if (!id) return;
+    decisionObserver ??= new ResizeObserver(() => {
+      if (decisionFrame) return;
+      decisionFrame = requestAnimationFrame(() => {
+        decisionFrame = 0;
+        const next = { ...decisionHeights };
+        let changed = false;
+        for (const [card, key] of decisionCards) {
+          const height = Math.ceil(card.getBoundingClientRect().height);
+          if (next[key] !== height) { next[key] = height; changed = true; }
+        }
+        if (changed) decisionHeights = next;
+      });
+    });
+    decisionCards.set(node, id); decisionObserver.observe(node);
+    return { destroy() {
+      decisionObserver?.unobserve(node); decisionCards.delete(node);
+      const next = { ...decisionHeights }; delete next[id]; decisionHeights = next;
+    } };
+  }
   const positions = $derived.by(() => {
     let y = 22;
     return new Map(steps.map(step => {
-      const height = selected === step.id ? detailHeight : 38;
+      const base = selected === step.id ? detailHeight : 38;
+      // Reserve space before the first measurement; wrap actual text locally.
+      const estimate = showDecisionReason(step) ? 52 + Math.ceil(step.why.length * 8 / (nodeWidth - 24)) * 17 : base;
+      const height = Math.max(base, isDecision(step) ? decisionHeights[step.id] ?? estimate : 0);
       const position = { x: (width - nodeWidth) / 2, y, height };
       y += height + 28;
       return [step.id, position];
@@ -51,7 +81,7 @@
     }
     return 'M ' + x + ' ' + ay + ' V ' + by;
   }
-  onMount(() => { const observer = new ResizeObserver(() => availableWidth = viewport.clientWidth); observer.observe(viewport); return () => observer.disconnect(); });
+  onMount(() => { const observer = new ResizeObserver(() => availableWidth = viewport.clientWidth); observer.observe(viewport); return () => { observer.disconnect(); decisionObserver?.disconnect(); cancelAnimationFrame(decisionFrame); }; });
 </script>
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div class="workflow-canvas" role="region" aria-label="Workflow changes" tabindex={localScroll ? 0 : undefined} bind:this={viewport}>
@@ -63,11 +93,16 @@
       {/each}
       {#each steps as step (step.id)}
         {@const position = positions.get(step.id)!}
+        {@const decisionReason = showDecisionReason(step)}
         <foreignObject x={position.x} y={position.y} width={nodeWidth} height={position.height} data-step-id={step.id}>
-          <button class="step" class:selected={selected === step.id} onclick={() => onselect(step.id)} title={step.node_name + (step.why ? ' — ' + step.why : step.explanation_pending ? ' — Waiting for the agent’s explanation.' : '')} data-testid="workflow-step" data-change-id={step.change_id} data-explanation-pending={step.explanation_pending} aria-pressed={selected === step.id}>
-            {step.summary}
-          </button>
-          {#if selected === step.id}{@render detail(step)}{/if}
+          <div class="step-card" class:decision={isDecision(step)} use:measureDecision={isDecision(step) ? step.id : undefined}>
+            <button class="step" class:selected={selected === step.id} onclick={() => onselect(step.id)} title={step.node_name + (step.why ? ' — ' + step.why : step.explanation_pending ? ' — Waiting for the agent’s explanation.' : '')} data-testid="workflow-step" data-change-id={step.change_id} data-explanation-pending={step.explanation_pending} aria-pressed={selected === step.id} data-step-kind={isDecision(step) ? 'decision' : undefined} aria-describedby={isDecision(step) ? 'decision-kind-' + step.id + (decisionReason ? ' decision-reason-' + step.id : '') : undefined}>
+              {step.summary}
+            </button>
+            {#if isDecision(step)}<span class="decision-type" id={'decision-kind-' + step.id}>AI decision</span>{/if}
+            {#if decisionReason}<p class="decision-summary" id={'decision-reason-' + step.id} data-testid="decision-summary">{step.why}</p>{/if}
+            {#if selected === step.id}{@render detail(step)}{/if}
+          </div>
         </foreignObject>
       {/each}
     </svg>

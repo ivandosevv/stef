@@ -29,7 +29,7 @@ func (mode UpdateMode) ReportingInstructions() string {
 	case UpdatesMilestones:
 		return "report_event: major milestones only; reuse a brief public why. No per-file reports or polling. context_id answers explicit requests only."
 	case UpdatesActivity:
-		return "Activity: share brief public choices with action decided; no private thinking, prompts, commands, or raw tool output. " + fileReportingInstructions
+		return "Activity: before the first action group or changed purpose/approach, report_event action=decided: next action/path and why, one reused public sentence (8–20 words). Skip repeated intent, tools, and housekeeping. No private thinking, prompts, commands, or raw output. " + fileReportingInstructions
 	case UpdatesDisabled:
 		return "Updates disabled. Stop reporting and check-ins for this turn; read the mode once at the next task."
 	default:

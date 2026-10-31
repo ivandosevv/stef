@@ -361,8 +361,14 @@ into every private workflow.
 Use a stable agent_id. Read update_mode at task start and follow the compact
 reporting_instructions in receipts. milestones uses only major report_event
 updates with short reasons; activity adds supported sanitized tool stages and
-brief public decisions using report_event action=decided; disabled stops new
+brief public reasons using report_event action=decided before the first meaningful
+action group and whenever its purpose or approach changes; disabled stops new
 reporting/check-ins for the turn. Available hook detail varies by client.
+Use a 2–4 word label, the next action or path, and one reused 8–20 word public
+sentence explaining why. Skip repeated intent, individual tool narration, and
+housekeeping; exact saved-file reasons remain required. This is a summary of the
+agent's choice, not its private internal thinking. Decision reasons stay visible
+in the workflow when a newer action is selected, without additional AI calls.
 Neither MCP nor file observation exposes private internal thinking.
 User mode changes reach an already-working agent at its next check-in, not by
 interrupting the client's generation. No polling or measured token savings are implied.

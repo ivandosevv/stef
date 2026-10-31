@@ -163,12 +163,18 @@ report_changes JSON through stdin with --report-changes --repo <verified-root>
 --daemon <verified-endpoint>. This uses MCP to an existing root-matched daemon;
 it neither starts another agent nor executes edits. Use only current exact IDs.
 
-In activity mode, also share concise public choices through report_event with
-action=decided and a short why when useful. Supported hooks record sanitized
-search/read/edit/test/tool stages locally; host coverage varies. Do not duplicate
-every observed tool call or send private reasoning, prompts, raw commands, or
-raw tool output. This mode starts now, with no retrospective reporting. Extra agent
-reports may use tokens; observation itself makes no model calls.
+In activity mode, before the first meaningful action group and when its purpose
+or approach changes, call report_event action=decided with the next action/path
+and why. Reuse one short public sentence (typically 8–20 words), a 2–4 word
+summary, relevant node_name, and actual parents. Report before the action. Skip
+identical intent, repetitive tools, housekeeping, and duplicate chat prose. Do
+not repeat the same intent per file; exact saved-file reasons remain required.
+Supported hooks record sanitized stages locally; these are observations, not
+invented reasons, and host coverage varies. Never send private reasoning,
+prompts, raw commands, or raw tool output. Only report new intent while activity
+is selected; no polling or retrospective reporting after a mode change. Do not
+send new decided reports in milestones, files, or disabled. Extra reports may
+use tokens; observation itself makes no model calls.
 
 In disabled mode, stop reporting and additional check-ins for the rest of this
 turn. Read the mode again at the start of the next task. Saved history is retained;

@@ -32,8 +32,11 @@ tokens.
 
 Updates chooses Major milestones, Every file, All activity, or Disabled. Changes
 apply to new work. Earlier steps stay available through Show saved history.
-All activity adds available searches, reads, tool stages, and brief decisions the
-agent shares. It cannot expose private thinking. Every file and All activity
+All activity adds available searches, reads, tool stages, and brief reasons before
+the agent changes direction. For example: “I’m checking startup because the saved
+preference resets there.” That reason stays visible as newer actions arrive.
+Agents reuse one short public sentence per meaningful action group, skipping
+repeated tools and housekeeping. It cannot expose private thinking. Every file and All activity
 may use more agent tokens for explanations; observation makes no AI calls.
 
 Design chooses Minimal or Interactive. Interactive explores the selected saved

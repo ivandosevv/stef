@@ -5,7 +5,7 @@ Stay involved while your AI codes.
 stef is a local companion that shows what your agent changes and why. Follow
 the workflow, inspect a saved diff, or suggest something while the agent works.
 Choose major milestones, every file, all activity, or no updates. All activity
-adds available tool steps and brief shared decisions, never private thinking.
+adds tool steps and short reasons before actions, never private thinking.
 Keep the view minimal or explore changes in Interactive.
 
 Each agent and subagent starts privately with a name like **Quiet Fox 2487**,

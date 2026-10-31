@@ -37,9 +37,16 @@ Major milestones need only brief reasons. Every file and All activity need the e
 revision explained immediately after each edit, before another edit or test.
 Use trusted hook IDs or get_state with changed_paths from your actual edit and
 settle_ms=300, then report_changes with the exact returned revision IDs.
-All activity also shows available sanitized tool stages and brief public
-decisions via report_event action=decided. Never send private thinking, prompts,
-commands, or raw tool output. Extra agent reports may use tokens. Start with new work.
+In All activity, before the first meaningful action group and when its purpose
+or approach changes, report_event action=decided with the next action/path and
+why. Reuse one public sentence (typically 8–20 words), a 2–4 word summary,
+relevant node_name, and actual parents. Report before the action. Skip repeated
+intent, tool-by-tool or housekeeping narration, and duplicate chat prose. Do not
+repeat the same intent per file; exact saved-file reasons remain required.
+Available hook stages are observations, not invented reasons. Never send private
+thinking, prompts, commands, or raw tool output. Extra reports may use tokens.
+Only report new intent while activity is selected; no polling or backfilling.
+Do not send new decided reports in milestones, files, or disabled.
 Disabled stops reporting and extra check-ins for that turn. Only explain edits
 from this chat in the selected project. Passive capture and local visuals make
 no extra model calls.

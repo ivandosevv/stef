@@ -69,10 +69,19 @@ updating the reason without moving the step or losing the selection.
 
 Every file shows saved revisions, agent milestones, and supported read/edit/test
 signals. All activity additionally keeps distinct supported lifecycle and tool
-operations, including searches, plus brief agent-shared decisions (decided).
+operations, including searches, plus brief public intent reports (decided).
+MCP guidance asks for the next action/path and why before the first meaningful
+action group and when its purpose changes. One reused 8–20 word sentence avoids
+repeated tool or housekeeping narration. These reports summarize a choice;
+they do not collect private internal thinking or start another model.
 Watcher symbols, feedback events, and backend diagnostics stay hidden. Hook
-rows display neutral observed context without inventing an agent reason. Closed steps are 38px high and show
-the filename and short label. Selecting one expands its brief explanation inline;
+rows display neutral observed context without inventing an agent reason.
+Ordinary closed steps are 38px high and show the filename and short label.
+Decision rows keep their supplied brief reason visible as later actions arrive.
+The graph measures their wrapped text locally so rows and arrows stay aligned.
+Selected Minimal decisions use their existing detail instead of repeating the
+reason; Interactive keeps the reason in the graph as well as its properties.
+Selecting an ordinary step expands its brief explanation inline;
 Suggest reveals the input on demand. The header contains stef, Clear, and a small
 appearance button plus the compact Updates control. Show diff on a selected file
 opens its recorded unified patch in a responsive dialog, with the same live AI
