@@ -51,8 +51,12 @@ revision's wrapped Git-style diff, local change exploration, or a milestone's
 reported paths. Keep workflow and properties scrolling independent. Style-effect
 samples must use supported exact captured values and clearly label their scope;
 never invent arbitrary application behavior or execute source in the preview.
-New live changes follow the newest step locally without moving keyboard focus.
-Preserve open diffs and unfinished suggestions until inspection ends.
+New live changes select the newest step locally without moving keyboard focus.
+Manual step selection or inspection pauses following until Follow latest is
+clicked. Keep that compact control available in both designs. Pause survives
+reconnects, reloads, and design changes within the same workspace/window; new
+chats, Clear, and new Updates windows follow by default. Preserve open diffs and
+unfinished suggestions; resuming must not discard them.
 Design changes and history viewing make no model calls. Fuller context is requested
 only through an explicit Explain more click. Request explanation asks for a
 missing reason; neither action starts a background model call. Answer feedback with

@@ -732,3 +732,27 @@ the working agent; stef adds no background inference.
   were preserved. A read-only live browser check found all four Updates options,
   with no page errors or API writes. Existing MCP bridges need reconnection after
   a source update to load the new decided action.
+
+
+## Follow latest checkpoint, 2026-10-31
+
+- New steps select by default. Manual selection, diff/history inspection, and
+  local change exploration pause following until the developer clicks Follow
+  latest. The small control appears in both designs and preserves open diffs
+  and nonempty suggestions.
+- Pause is local to the workspace/recording window and survives reload,
+  reconnect, and design changes. New chats, Clear, and new Updates windows
+  follow by default, including populated reconnect snapshots. A view can resume
+  following before any new current-window step exists.
+- make check, make test (Go race checks and 60 UI tests), and make build passed.
+  The full browser run passed 47 of 48 cases. The remaining legacy diff test
+  expected implicit resume after closing a diff; after adding the explicit
+  Follow latest click, its focused rerun passed. Six new cases cover both
+  designs, inspection persistence, focus, offline arrivals, workspace boundaries,
+  and empty-window resume. Independent current-source snapshot checks also passed.
+- Selection, following, and design changes issued no API writes in the new
+  browser cases. No background model calls or extra reporting were introduced.
+- Reloaded only the verified personal daemon on port 4825, preserving journal
+  bytes, Mellow Wren 1341 membership, and the All activity recording window.
+  Read-only live browser checks in both designs restored a paused selection
+  after reload and resumed latest on click, with zero API writes or page errors.

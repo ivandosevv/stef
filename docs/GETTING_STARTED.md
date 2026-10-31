@@ -19,8 +19,9 @@ browser link. A native macOS companion remains an optional source-build choice.
 
 ## Use it while coding
 
-Select a step for its short explanation. Show diff opens that exact saved
-revision, with additions and removals. Suggest lets you send a note at the
+New changes select automatically. Selecting a step pauses following so you can
+read; Follow latest resumes it. Show diff opens that exact saved revision, with
+additions and removals. Suggest lets you send a note at the
 agent's next check-in. Clear resets the selected workspace's workflow.
 
 Updates chooses Major milestones, Every file, All activity, or Disabled. Changes

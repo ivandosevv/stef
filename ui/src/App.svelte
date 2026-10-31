@@ -41,6 +41,7 @@
   let requestEpoch = 0;
   let typing = $state(false);
   let inspecting = $state(false);
+  let following = $state(true);
   let detailsViewport = $state<HTMLDivElement>();
   let detailsKey = '';
   let noteInput = $state<HTMLInputElement>();
@@ -53,7 +54,7 @@
   const steps = $derived(showHistory ? [...windows.saved, ...windows.current] : windows.current);
   const chosen = $derived(steps.find(step => step.id === selected));
   const chosenRequest = $derived(contextRequests.find(request => request.session === session && request.reference === (chosen?.reference_id ?? chosen?.id)));
-  const followBlocked = $derived(diffOpen || typing || Boolean(note.trim()) || inspecting);
+  const followBlocked = $derived(!following || diffOpen || typing || Boolean(note.trim()) || inspecting);
   $effect(() => {
     const viewport = detailsViewport;
     const key = session + ':' + stepKey(chosen);
@@ -85,13 +86,18 @@
   type NativeWindow = Window & { stefNativeReady?: () => Promise<void> };
   const selectionKey = () => 'stef-selection:' + session;
   const historyKey = () => 'stef-history:' + session + ':' + updatesFrom;
+  const followingKey = () => 'stef-follow:' + session + ':' + updatesFrom;
   function rememberSelection() {
     try {
       if (selected) localStorage.setItem(selectionKey(), selected);
       else localStorage.removeItem(selectionKey());
     } catch { /* Selection still works when view storage is unavailable. */ }
   }
-  function resetFollow() { pendingFollow = null; reveal = null; followed = false; inspecting = false; }
+  function rememberFollowing() {
+    try { localStorage.setItem(followingKey(), String(following)); } catch { /* Following still works without view storage. */ }
+  }
+  function pauseFollowing() { following = false; followed = false; reveal = null; rememberFollowing(); }
+  function resetFollow(fresh = false) { pendingFollow = null; reveal = null; followed = false; inspecting = false; if (fresh) following = true; }
   const stepKey = (step?: AgentEvent) => step ? step.id + ':' + (step.reference_id ?? step.id) : '';
   function followUpdate(previous?: AgentEvent) {
     const latest = workflowWindows(events, updateMode, updatesFrom).current.at(-1);
@@ -102,15 +108,20 @@
     }
   }
   function changeDesign(value: Design) { design = value; if (value === 'minimal') inspecting = false; saveDesign(value); if (selected) reveal = { id: selected, version: ++revealVersion }; }
-  function inspectChange() { inspecting = true; }
+  function inspectChange() { inspecting = true; pauseFollowing(); }
   function resumeFollowing() {
+    const latest = windows.current.at(-1);
     if (diffOpen || note.trim()) return;
+    following = true; rememberFollowing();
     inspecting = false; typing = false;
-    pendingFollow = windows.current.at(-1)?.id ?? null;
+    pendingFollow = latest?.id ?? null;
   }
+  function openDiff() { pauseFollowing(); diffOpen = true; }
+  function openSuggestion() { pauseFollowing(); noteOpen = true; }
+  function openFile(node: string) { pauseFollowing(); sendToHost({ type: 'stef.openFile', node }); }
   function suggestSelection(text: string) {
     if (!chosen || note.trim()) return;
-    inspecting = true; noteOpen = true; note = text.slice(0, 500); noteStatus = '';
+    inspectChange(); noteOpen = true; note = text.slice(0, 500); noteStatus = '';
     void tick().then(() => {
       noteInput?.focus({ preventScroll: true });
       if (!noteInput || !detailsViewport) return;
@@ -133,6 +144,7 @@
     if (!chosen || asking || chosenRequest || !connected || updateMode === 'disabled') return;
     const target = events.find(event => event.id === (chosen.reference_id ?? chosen.id));
     if (!target) return;
+    pauseFollowing();
     asking = true; requestStatus = '';
     const targetSession = session, targetStep = chosen.id;
     const after = events.at(-1)?.id ?? '0';
@@ -163,14 +175,16 @@
       if (!response.ok) throw new Error('Could not change updates.');
       const settings = await response.json();
       if (!isUpdateMode(settings.update_mode)) throw new Error('Could not change updates.');
-      if (settings.update_mode !== previousMode) { toggleHistory(false); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); }
+      if (settings.update_mode !== previousMode) { toggleHistory(false); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(true); }
       updateMode = settings.update_mode;
+      if (settings.update_mode !== previousMode) rememberFollowing();
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change updates.'; throw cause; }
   }
 
   function select(id: string) {
-    resetFollow();
-    selected = selected === id ? null : id;
+    const wasFollowing = following;
+    resetFollow(); pauseFollowing();
+    selected = selected === id && !wasFollowing ? null : id;
     diffOpen = false;
     requestStatus = '';
     note = ''; noteStatus = ''; noteOpen = false;
@@ -191,7 +205,7 @@
       const response = await fetch('/api/sessions/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: session }) });
       if (!response.ok) throw new Error('Could not clear this workflow.');
       const snapshot = await response.json();
-      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); showHistory = false; rememberSelection(); }
+      if (snapshot.session_id === session) { events = []; selected = null; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(true); rememberFollowing(); showHistory = false; rememberSelection(); }
     } catch (cause) { error = cause instanceof Error ? cause.message : 'Could not clear this workflow.'; }
     finally { busy = false; }
   }
@@ -214,7 +228,7 @@
       if (data.type === 'snapshot') {
         const boundary = data.updates_from && /^\d+$/.test(data.updates_from) ? data.updates_from : '0';
         const windowChanged = boundary !== updatesFrom || (isUpdateMode(data.update_mode) && data.update_mode !== updateMode);
-        if (windowChanged) { showHistory = false; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); }
+        if (windowChanged) { showHistory = false; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(true); }
         updatesFrom = boundary;
         if (isUpdateMode(data.update_mode)) updateMode = data.update_mode;
         const id = data.session_id ?? 'local';
@@ -226,15 +240,21 @@
           if (!retainedRequests.length) resetRequests();
           else contextRequests = retainedRequests;
         }
-        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); showHistory = localStorage.getItem(historyKey()) === 'true'; }
-        else if (windowChanged) toggleHistory(false);
+        if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(true); showHistory = localStorage.getItem(historyKey()) === 'true';
+          try { following = localStorage.getItem(followingKey()) !== 'false'; } catch { /* Fresh views follow by default. */ }
+        } else if (windowChanged) { toggleHistory(false); rememberFollowing(); }
         const restoredWindows = workflowWindows(events, updateMode, updatesFrom);
         if (![...restoredWindows.saved, ...restoredWindows.current].some(step => step.id === selected)) { selected = null; requestStatus = ''; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetFollow(); rememberSelection(); }
         if (resumed && selected && !restoredWindows.current.some(step => step.id === selected)) toggleHistory(true);
         if (changed) {
-          if (selected) reveal = { id: selected, version: ++revealVersion };
-          else pendingFollow = workflowWindows(events, updateMode, updatesFrom).current.at(-1)?.id ?? null;
-        } else if (!windowChanged) followUpdate(previous);
+          const latest = restoredWindows.current.at(-1);
+          if (following && latest) pendingFollow = latest.id;
+          else if (selected) {
+            reveal = { id: selected, version: ++revealVersion };
+            if (latest && latest.id !== selected) pendingFollow = latest.id;
+          } else pendingFollow = latest?.id ?? null;
+        } else if (windowChanged) pendingFollow = restoredWindows.current.at(-1)?.id ?? null;
+        else followUpdate(previous);
       } else if (!data.event.session_id || data.event.session_id === session) {
         events = mergeEvents(events, [data.event]);
         followUpdate(previous);
@@ -282,12 +302,18 @@
   });
 </script>
 
-<div class="stef-app" data-update-mode={updateMode} data-design={design}>
+<div class="stef-app" data-update-mode={updateMode} data-design={design} data-following={following}>
   <header><div class="brand-group"><span class="brand">stef</span><WorkspacePicker {origin} workspaceID={session} {workspaces} {connected} onselect={selectWorkspace} onchange={changeSharing} /></div><div class="header-actions"><UpdatesPicker mode={updateMode} {connected} onchange={changeUpdates} /><DesignPicker {design} onchange={changeDesign} /><ThemePicker /><button class="clear" onclick={clear} disabled={busy || !events.length} aria-label="Clear this chat’s workflow" title={shared ? 'Clear this shared workflow for all members' : 'Clear this chat’s workflow'}>↺</button></div></header>
   <main aria-label="Workflow">
     {#if error}<p class="notice" role="status">{error}</p>{/if}
     {#if updateMode === 'disabled'}<div class="empty"><p>Updates disabled</p></div>{:else}
-    {#if windows.saved.length}<div class="history-control"><button onclick={() => toggleHistory()}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
+    {#if windows.saved.length}<div class="history-control"><button onclick={() => { pauseFollowing(); toggleHistory(); }}>{showHistory ? 'Hide saved history' : 'Show saved history'}</button><small>{showHistory ? 'Saved history — viewing it uses no AI calls.' : 'New updates only. Earlier work is saved.'}</small></div>{/if}
+    {#if !following}
+      <div class="follow-control" role="group" aria-label="Following updates">
+        <span>{pendingFollow ? 'New work is waiting.' : 'Paused'}</span>
+        <button onclick={resumeFollowing} disabled={diffOpen || Boolean(note.trim())} title={diffOpen ? 'Close the diff first.' : note.trim() ? 'Send or discard your suggestion first.' : 'Select new changes automatically.'}>Follow latest</button>
+      </div>
+    {/if}
     <div class="workflow-layout" class:interactive={design === 'interactive'}>
     <GraphCanvas {steps} {selected} {reveal} localScroll={design === 'interactive'} onselect={select} {connected} detailHeight={design === 'interactive' ? 38 : (noteOpen ? 208 : 144) + (shared ? 18 : 0) + (chosen?.explanation_pending || chosenRequest || requestStatus ? 52 : 0)}>
       {#snippet detail(step)}
@@ -300,9 +326,9 @@
             <button class="request-explanation" onclick={askContext} disabled={!connected || asking || Boolean(chosenRequest)}>{asking || chosenRequest ? 'Request queued' : 'Request explanation'}</button>
           {/if}
           {#if requestStatus}<small class="request-status" role="status">{requestStatus}</small>{/if}
-          {#if hasFileDiff(step)}<button class="show-diff" onclick={() => diffOpen = true}>Show diff</button>{/if}
-          {#if embedded && step.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: step.node_name })}>Open {shortName(step.node_name)}</button>{/if}
-          {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
+          {#if hasFileDiff(step)}<button class="show-diff" onclick={openDiff}>Show diff</button>{/if}
+          {#if embedded && step.node_name !== '@workflow'}<button class="open-file" onclick={() => openFile(step.node_name)}>Open {shortName(step.node_name)}</button>{/if}
+          {#if !noteOpen}<button class="suggest" onclick={openSuggestion}>Suggest</button>{:else}
             <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} bind:this={noteInput} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
             {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
           {/if}
@@ -313,13 +339,12 @@
     {#if design === 'interactive'}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="interactive-detail" role="region" aria-label="Selected file properties" tabindex="0" bind:this={detailsViewport}>
-        {#if inspecting}<div class="inspection-control"><span>{pendingFollow ? 'New work is waiting.' : 'Exploring this change.'}</span><button onclick={resumeFollowing} disabled={diffOpen || Boolean(note.trim())} title={note.trim() ? 'Send or discard your suggestion first.' : 'Follow the latest work again.'}>Return to latest</button></div>{/if}
         {#if chosen}
           {#if shared}<small class="shared-contributor">{chosen.agent_id === 'filesystem' ? 'Observed file change' : chosen.agent_id}</small>{/if}
-          <ChangeVisual step={chosen} {steps} oninspect={inspectChange} onsuggest={suggestSelection} onselect={select} ondiff={() => diffOpen = true} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
+          <ChangeVisual step={chosen} {steps} oninspect={inspectChange} onsuggest={suggestSelection} onselect={select} ondiff={openDiff} onexplain={askContext} {connected} asking={asking || Boolean(chosenRequest)} {requestStatus} />
           <section class="step-detail" aria-label="Suggest for this step">
-            {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => sendToHost({ type: 'stef.openFile', node: chosen.node_name })}>Open {shortName(chosen.node_name)}</button>{/if}
-            {#if !noteOpen}<button class="suggest" onclick={() => noteOpen = true}>Suggest</button>{:else}
+            {#if embedded && chosen.node_name !== '@workflow'}<button class="open-file" onclick={() => openFile(chosen.node_name)}>Open {shortName(chosen.node_name)}</button>{/if}
+            {#if !noteOpen}<button class="suggest" onclick={openSuggestion}>Suggest</button>{:else}
               <form onsubmit={suggest}><input aria-label="Suggest something to the agent" placeholder="Suggest something…" bind:value={note} bind:this={noteInput} onfocus={() => typing = true} onblur={() => typing = false} maxlength="500" /><button aria-label="Send suggestion" disabled={!note.trim() || busy || !connected}>↑</button></form>
               {#if noteStatus}<small role="status">{noteStatus}</small>{/if}
             {/if}

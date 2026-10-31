@@ -55,8 +55,10 @@ header { height: 46px; margin: 0 20px; display: flex; align-items: center; justi
 .workflow-layout.interactive .workflow-canvas, .interactive-detail { min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .interactive-detail { min-width: 0; position: relative; }
 .workflow-layout.interactive .workflow-canvas:focus-visible, .interactive-detail:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
-.inspection-control { position: sticky; top: 0; z-index: 1; background: var(--bg); display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 20px 0; color: var(--muted); font-size: 10px; }
-.inspection-control button { border: 1px solid var(--border); background: var(--surface); color: var(--control); border-radius: 4px; padding: 5px 7px; font-size: 10px; }
+.follow-control { position: sticky; top: 46px; z-index: 4; flex-shrink: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 20px; color: var(--muted); font-size: 10px; }
+.follow-control button { border: 1px solid var(--border); background: var(--surface); color: var(--control); border-radius: 4px; padding: 5px 7px; font-size: 10px; }
+.stef-app[data-design="interactive"] .follow-control { position: static; }
+.stef-app[data-following="false"] .workflow-canvas foreignObject { scroll-margin-top: 94px; }
 .visual-empty { min-height: 200px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--faint); font-size: 12px; border: 1px dashed var(--border); border-radius: 8px; }
 .visual-empty > span { font-size: 26px; color: var(--edge); }
 @media (max-width: 700px) { .workflow-layout.interactive { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(90px, 30%) minmax(0, 1fr); padding: 0 12px 12px; gap: 8px; } .interactive-detail { border-top: 1px solid var(--border); } }

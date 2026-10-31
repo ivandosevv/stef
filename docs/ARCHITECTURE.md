@@ -117,17 +117,23 @@ without horizontal scrolling. Interactive bounds the workflow and properties
 inside separate scroll containers with overscroll containment; narrow layouts
 stack those containers. Following scrolls only the workflow container. Selecting
 another file resets the properties pane; same-step late reasons retain its scroll.
-Deliberate map/filter/line/sample interactions pause following, and Return to
-latest resumes it without replacing a nonempty draft. Exact-line suggestions
+Manual selection, saved history, and deliberate map/filter/line/sample
+interactions pause following. A compact Follow latest control appears above
+both designs and resumes automatic selection without replacing a nonempty
+draft or an open diff. Pause is stored locally per workspace/recording window
+and survives reload, reconnect, and design changes. New chats, Clear, and new
+Updates windows follow by default. Exact-line suggestions
 only open a bounded editable draft and focus it inside the properties pane.
 Selecting another file or hunk resets the preview
 scroll to its start; late reasons on the same revision preserve its position.
 Closing a diff restores the opener after rendering, with a selected-step fallback
 when following has replaced that button. Live tail step/revision changes select and reveal
 the latest node after the DOM updates, without moving keyboard focus. An open
-diff, focused suggestion input, or nonempty draft defers that follow to the newest
-pending node. Snapshot chat/window boundaries reset it; reload restores the saved
-selection and reconnect follows newly arrived tail activity. Late historical
+diff, focused suggestion input, or nonempty draft protects the inspected step.
+Closing a diff, clearing a draft, or Escape keeps manual following paused.
+Snapshot chat/window boundaries reset it; reload restores both selection and
+the saved pause. A paused reconnect retains the inspected step while new tail
+activity remains available through Follow latest. Late historical
 reasons never steal selection. The view remembers the preference and suggestion draft
 without requesting agent output. Explain more alone submits a targeted feedback
 question. A report_event context_id reply validates the retained chat/node/action

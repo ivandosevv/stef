@@ -736,7 +736,7 @@ test('Interactive shows exact local revisions and requests more agent context on
   expect(state.feedback).toHaveLength(1);
   expect(state.feedback[0].node_name).toBe(revision.node_name);
   expect(state.feedback[0].text).toContain(revision.id);
-  await page.getByRole('button', { name: 'Return to latest', exact: true }).click();
+  await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
   await writeFile(file, 'export const mode = "later unrelated revision";\n');
   await expect(fileSteps).toHaveCount(3);
   await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
@@ -927,7 +927,7 @@ test('Interactive change exploration stays local and drafts an exact line sugges
   await writeFile(resolve(root, 'explore-arriving.ts'), 'export const arriving = true;\n');
   await expect(page.getByTestId('workflow-step')).toHaveCount(3);
   await expect(steps.last()).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Follow latest', exact: true })).toBeEnabled();
   await panel.getByRole('button', { name: 'Suggest about this line', exact: true }).click();
   const draft = page.getByRole('textbox', { name: 'Suggest something to the agent' });
   await expect(draft).toBeFocused();
@@ -937,12 +937,13 @@ test('Interactive change exploration stays local and drafts an exact line sugges
   expect(text).toContain('40');
   expect(text).toContain('export const tail = "new";');
   expect(text.length).toBeLessThanOrEqual(500);
-  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Follow latest', exact: true })).toBeDisabled();
   expect(feedbackRequests).toEqual([]);
   expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
   await page.keyboard.press('Escape');
-  await expectLatestVisible(page);
   await expect(draft).toHaveCount(0);
+  await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
+  await expectLatestVisible(page);
   expect(feedbackRequests).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -1023,10 +1024,10 @@ test('Interactive previews a safe exact style effect with working comparison con
   await expect.poll(() => target.evaluate(node => parseFloat(getComputedStyle(node).paddingLeft))).toBe(16);
   await page.setViewportSize({ width: 360, height: 740 });
   expect(await effect.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-  await expect(page.getByRole('button', { name: 'Return to latest', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Follow latest', exact: true })).toBeEnabled();
   expect(feedbackRequests).toEqual([]);
   expect(externalRequests).toEqual([]);
-  await page.getByRole('button', { name: 'Return to latest', exact: true }).click();
+  await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
   await writeFile(resolve(root, 'effect-unsafe.css'), '.sample { padding: 8px; }\n');
   await expect(page.getByTestId('workflow-step')).toHaveCount(3);
   await writeFile(resolve(root, 'effect-unsafe.css'), '.sample { padding: url(https://stef-preview-invalid.example/leak); }\n');
@@ -1078,7 +1079,7 @@ for (const design of ['minimal', 'interactive'] as const) {
     await expect(firstStep).toHaveAttribute('aria-pressed', 'true');
     await reconnect(page);
     await expect(firstStep).toHaveAttribute('aria-pressed', 'true');
-    // A save while disconnected is a genuinely new tail in the next snapshot.
+    // A reconnect must keep the user's inspection paused even when a new tail arrives.
     const socketCount = await page.evaluate(() => (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets!.length);
     await page.evaluate(() => (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets!.at(-1)!.close());
     await expect(page.getByRole('button', { name: 'Updates', exact: true })).toBeDisabled();
@@ -1087,6 +1088,8 @@ for (const design of ['minimal', 'interactive'] as const) {
     await expect.poll(async () => (await savedEvents(request, session)).some(event => event.node_name === offlineName && event.kind === 'file')).toBe(true);
     await expect.poll(() => page.evaluate(() => (window as Window & { stefTestSockets?: WebSocket[] }).stefTestSockets!.length)).toBe(socketCount + 1);
     await expect(page.getByTestId('workflow-step')).toHaveCount(18);
+    await expect(firstStep).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
     await expectLatestVisible(page);
 
     await page.setViewportSize({ width: 360, height: 640 });
@@ -1141,6 +1144,7 @@ for (const design of ['minimal', 'interactive'] as const) {
     await input.fill('A draft on saved history that I will hide.');
     await page.getByRole('button', { name: 'Hide saved history', exact: true }).click();
     await expect(input).toHaveCount(0);
+    await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
     await writeFile(resolve(root, 'draft-hidden-history-' + design + '.ts'), 'export const current = true;\n');
     await expect(page.getByTestId('workflow-step')).toHaveCount(2);
     await expectLatestVisible(page);
@@ -1180,8 +1184,10 @@ for (const design of ['minimal', 'interactive'] as const) {
     await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
     await expect(close).toBeFocused();
     await close.click();
-    await expectLatestVisible(page);
+    await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'Show diff', exact: true })).toBeFocused();
+    await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
+    await expectLatestVisible(page);
 
     await chooseStep(fileSteps.first());
     await page.getByRole('button', { name: 'Suggest', exact: true }).click();
@@ -1198,6 +1204,8 @@ for (const design of ['minimal', 'interactive'] as const) {
     await input.fill('');
     await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
     await input.blur();
+    await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
     await expectLatestVisible(page);
     await chooseStep(fileSteps.first());
     await page.getByRole('button', { name: 'Suggest', exact: true }).click();
@@ -1207,8 +1215,9 @@ for (const design of ['minimal', 'interactive'] as const) {
     await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
     await expect(input).toBeFocused();
     await page.keyboard.press('Escape');
-    await expectLatestVisible(page);
     await expect(input).toHaveCount(0);
+    await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
+    await expectLatestVisible(page);
     expect(feedbackRequests).toEqual([]);
     expect((await checkIn(request, session)).feedback ?? []).toEqual([]);
     expect(errors).toEqual([]);
@@ -1281,6 +1290,8 @@ test('Interactive wraps exact Git-style additions and removals without horizonta
     await dialog.getByRole('button', { name: 'Close diff', exact: true }).click();
   }
 
+  await expect(page.getByRole('button', { name: 'Follow latest', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
   const clippedName = 'unified-truncated.txt';
   await writeFile(resolve(root, clippedName), Array.from({ length: 400 }, (_, index) => 'captured ' + index + ': ' + 'source '.repeat(18)).join('\n') + '\n');
   await expect(page.locator('[data-testid="workflow-step"][title^="' + clippedName + '"]')).toHaveCount(1);
@@ -1364,8 +1375,8 @@ for (const recovery of [{ design: 'minimal', reply: 'changes' }, { design: 'inte
 
     await writeFile(file, 'export const version = "later";\n');
     await expect(fileSteps).toHaveCount(3);
-    await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
-    await chooseStep(fileSteps.nth(1));
+    await expect(fileSteps.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Follow latest', exact: true })).toBeEnabled();
     const later = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.node_name === name).at(-1)!;
     const unrelated = await request.post('/api/events', { data: { ...report(session, name, 'Explain the previous save', 'This reply belongs to the previous revision.'), action: first.action, context_id: first.id } });
     expect(unrelated.ok()).toBe(true);
@@ -1582,8 +1593,10 @@ test('file diffs keep exact additions, removals and AI explanations for each sav
   await expect(added).toHaveText(before);
   await page.getByRole('button', { name: 'Close diff', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
+  await expect(fileSteps.first()).toHaveAttribute('aria-pressed', 'true');
   await expect(showDiff).toBeFocused();
+  await page.getByRole('button', { name: 'Follow latest', exact: true }).click();
+  await expect(fileSteps.last()).toHaveAttribute('aria-pressed', 'true');
 
   const modified = (await savedEvents(request, session)).filter(event => event.source === 'watcher' && event.kind === 'file' && event.node_name === created.node_name).at(-1)!;
   expect(modified.action).toBe('modified');
