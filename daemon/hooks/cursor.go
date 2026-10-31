@@ -65,7 +65,7 @@ func Cursor(raw []byte, root string) (telemetry.Activity, error) {
 		return telemetry.Activity{}, fmt.Errorf("Cursor hook requires conversation_id")
 	}
 	sum := sha256.Sum256([]byte(conversation))
-	activity := telemetry.Activity{AgentID: fmt.Sprintf("cursor-%x", sum[:4]), SessionID: fmt.Sprintf("cursor-%x", sum[:16]), Tool: cursorToolLabel(input.Tool)}
+	activity := telemetry.Activity{AgentID: fmt.Sprintf("cursor-%x", sum[:4]), SessionID: fmt.Sprintf("cursor-%x", sum[:16]), Tool: hookToolLabel(input.Tool)}
 	switch input.Event {
 	case "sessionStart":
 		activity.Phase = "started"
@@ -139,19 +139,4 @@ func cursorOwnTool(tool string) bool {
 		}
 	}
 	return false
-}
-
-func cursorToolLabel(tool string) string {
-	if strings.HasPrefix(strings.ToLower(tool), "mcp:") || strings.HasPrefix(strings.ToLower(tool), "mcp__") {
-		return "MCP"
-	}
-	for _, label := range []string{"Shell", "Read", "Write", "Edit", "Grep", "Delete", "Task"} {
-		if strings.EqualFold(tool, label) {
-			return label
-		}
-	}
-	if tool == "" {
-		return ""
-	}
-	return "Tool"
 }

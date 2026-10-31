@@ -55,7 +55,7 @@ func Claude(raw []byte, root string) (telemetry.Activity, error) {
 	if identity == "" {
 		id = "claude"
 	}
-	a := telemetry.Activity{AgentID: id, Tool: input.Tool}
+	a := telemetry.Activity{AgentID: id, Tool: hookToolLabel(input.Tool)}
 	if identity != "" {
 		a.SessionID = fmt.Sprintf("claude-%x", sum[:16])
 	}
@@ -71,20 +71,17 @@ func Claude(raw []byte, root string) (telemetry.Activity, error) {
 	case "PreToolUse":
 		tool := strings.ToLower(input.Tool)
 		switch {
-		case strings.Contains(tool, "read") || tool == "grep" || tool == "glob":
+		case searchTool(tool):
+			a.Phase = "searching"
+		case strings.Contains(tool, "read"):
 			a.Phase = "reading"
 		case strings.Contains(tool, "edit") || strings.Contains(tool, "write") || strings.Contains(tool, "patch"):
 			a.Phase = "editing"
 		default:
 			a.Phase = "terminal"
 		}
-		// A command classification reports intent to run tests, never an inferred result.
-		command := strings.ToLower(input.Input.Command)
-		for _, pattern := range []string{"go test", "npm test", "npm run test", "pytest", "cargo test", "gradle test", "./gradlew test", "mvn test"} {
-			if strings.Contains(command, pattern) {
-				a.Phase = "testing"
-				break
-			}
+		if tool == "bash" {
+			a.Phase = commandActivityPhase(input.Input.Command)
 		}
 	default:
 		return a, fmt.Errorf("unsupported Claude hook event %q", input.Event)

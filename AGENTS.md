@@ -12,12 +12,15 @@ beside the agent; a native companion remains available for terminal and other
 hosts. IDE plugins are optional experiments, not a required installation. Keep the
 observer, lifecycle adapters, MCP contract, and IDE host separate. Passive file
 tracking and hook ingestion must make no model calls. Respect the current workspace's Updates
-setting: milestones reports only major steps with reasons, files captures and
-explains each saved file revision, and disabled stops new recording/reporting.
+setting: milestones reports only major steps with reasons; files captures and
+explains each saved revision; activity also shows available sanitized tool stages
+and brief agent-shared decisions; disabled stops new recording/reporting.
+In activity, report a concise public choice with action=decided when useful.
+Never submit internal reasoning transcripts, prompts, raw commands, or output.
 Updates changes begin a new recording window (updates_from); automatic
 explanations apply only to new saves, never to older retained pending files.
 Read the mode once at task start and honor mode changes in receipts. In files
-mode, prepare brief user-facing reasons alongside the edits, then after each edit
+or activity mode, prepare brief user-facing reasons alongside the edits, then after each edit
 tool use exact pending IDs supplied by a trusted hook or get_state once with
 settle_ms=300, and report_changes before another edit, test, or final reply.
 Sequence edit, bounded check-in, and exact report in the same orchestration call
@@ -39,7 +42,10 @@ home directory as an observer root or extend observation into excluded projects.
 Keep the interface limited to the workflow, brief agent-supplied reasons,
 directed arrows, a compact suggestion field, per-chat Clear, and the requested
 small appearance picker (Dark, Light, Eye comfort, System), and compact Updates
-picker (Major milestones, Every file, Disabled).
+picker (Major milestones, Every file, All activity, Disabled).
+All activity keeps distinct supported operations and decisions from its original
+recording window. Hook rows are observations, not invented AI reasons. Expanded
+reporting may use more agent tokens; local capture makes no model calls.
 The Design picker offers Minimal or Interactive. Interactive renders the selected
 revision's wrapped Git-style diff, local change exploration, or a milestone's
 reported paths. Keep workflow and properties scrolling independent. Style-effect

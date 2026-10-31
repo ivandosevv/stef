@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { milestoneAction, reportedParents, visualHunks } from './visual';
+import { milestoneAction, stepAction, reportedParents, visualHunks } from './visual';
 import type { AgentEvent } from './lib';
 
 const step = (id: string, node_name: string, parents?: string[]): AgentEvent => ({
@@ -59,6 +59,10 @@ describe('local change visualization', () => {
   it('labels only the reported action rather than inferring code behavior', () => {
     expect(milestoneAction('scouted')).toBe('Explore');
     expect(milestoneAction('tested')).toBe('Verify');
+    expect(milestoneAction('decided')).toBe('Decision');
+    expect(stepAction({ ...step('1', '@workflow'), source: 'hook', phase: 'terminal' })).toBe('Terminal');
+    expect(stepAction({ ...step('1', '@workflow'), source: 'hook', phase: 'searching' })).toBe('Searching');
+    expect(stepAction({ ...step('1', '@workflow'), source: 'hook', phase: 'tool_done' })).toBe('Finished');
     for (const action of ['created', 'modified', 'deleted'] as const) expect(milestoneAction(action)).toBe('Change');
   });
 

@@ -708,3 +708,27 @@ Native local processes remain trusted, Clear does not erase journal bytes,
 aggregate retained event memory needs a global budget, and public v0.3.0 release
 packages predate this checkpoint. Agent-written reasons still consume tokens in
 the working agent; stef adds no background inference.
+
+
+## All activity checkpoint, 2026-10-31
+
+- Added the fourth Updates option, All activity, for supported sanitized tool
+  stages, exact file revisions, and brief public decisions. It does not expose
+  private thinking, commands, prompts, or output. More agent reports may use tokens.
+- Mode changes affect new work. The hub stamps original recording mode/window;
+  saved activity restores without promoting older hidden file-mode observations.
+  Both automatic explanation routes reject pre-window IDs. Explicit retained
+  context remains available on request, and Disabled stops new recording.
+- Concrete searches remain visible in Every file. Distinct activity operations,
+  selection, diffs, independent scrolling, and drafts survive normal reconnects.
+- Local gates passed: make check, make test with Go race checks and 60 UI tests,
+  make build, and all 42 browser scenarios. Four new browser scenarios cover
+  activity, history, explicit context, privacy, and future-only mode changes.
+  Real SDK integration also covers forwarding, HTTP, and stdio transports.
+- The bundled reporting skill validates. No live mode changes or real model
+  calls were used for the tests. Public v0.3.0 packages predate this source update.
+- Reloaded only the root-matched personal daemon on port 4825. Journal bytes,
+  Mellow Wren 1341 membership, the Every file window, and zero pending reasons
+  were preserved. A read-only live browser check found all four Updates options,
+  with no page errors or API writes. Existing MCP bridges need reconnection after
+  a source update to load the new decided action.

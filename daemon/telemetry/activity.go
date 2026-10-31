@@ -13,7 +13,7 @@ type Activity struct {
 }
 
 var PhaseSummaries = map[string]string{
-	"started": "Session started", "reading": "Reading project context", "editing": "Applying code changes",
+	"started": "Session started", "reading": "Reading project context", "searching": "Searching project context", "editing": "Applying code changes",
 	"testing": "Running test command", "terminal": "Running terminal command", "tool_done": "Tool finished",
 	"completed": "Agent turn finished", "failed": "Tool reported a failure",
 }
@@ -29,7 +29,7 @@ func (a Activity) Event() (Event, error) {
 		summary = a.Summary
 	}
 	status := "running"
-	if a.Phase == "completed" || a.Phase == "failed" {
+	if a.Phase == "tool_done" || a.Phase == "completed" || a.Phase == "failed" {
 		status = "ready"
 	}
 	return Normalize(Event{SessionID: a.SessionID, AgentID: a.AgentID, NodeName: a.NodeName, Action: "scouted", Summary: summary, Why: "Observed a client lifecycle event; no decision rationale was supplied.", Status: status, Source: "hook", Category: "activity", Phase: a.Phase, Tool: a.Tool, Kind: "activity"})

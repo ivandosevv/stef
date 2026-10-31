@@ -38,6 +38,9 @@ func (h *Hub) validateChangeLocked(e telemetry.Event) error {
 	if target.NodeName != e.NodeName || target.Action != e.Action {
 		return fmt.Errorf("change_id must match the observed path and action")
 	}
+	if !h.currentEventLocked(target.ID, e.SessionID) {
+		return fmt.Errorf("change_id %q predates the current reporting window; use context_id only for an explicit developer request", e.ChangeID)
+	}
 	return nil
 }
 
@@ -55,7 +58,7 @@ func (h *Hub) PendingChanges(session string, limit int) ([]telemetry.PendingChan
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	session = h.resolveLocked(session)
-	if h.settingLocked(session).Mode != telemetry.UpdatesFiles {
+	if !h.settingLocked(session).Mode.CapturesFiles() {
 		return []telemetry.PendingChange{}, 0
 	}
 	if session == "" {
@@ -95,7 +98,7 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	session = h.resolveLocked(session)
-	if h.settingLocked(session).Mode != telemetry.UpdatesFiles {
+	if !h.settingLocked(session).Mode.CapturesFiles() {
 		return []telemetry.Event{}, nil
 	}
 	if len(changes) < 1 || len(changes) > 50 {
@@ -123,12 +126,13 @@ func (h *Hub) ExplainChanges(session, agent string, changes []telemetry.ChangeEx
 			return nil, err
 		}
 		if !h.currentEventLocked(target.ID, session) {
-			return nil, fmt.Errorf("change_id %q predates the current reporting window; omit it from automatic batches, or use report_event only for a developer-requested clarification", change.ChangeID)
+			return nil, fmt.Errorf("change_id %q predates the current reporting window; omit it from automatic batches, or use report_event context_id only for a developer-requested clarification", change.ChangeID)
 		}
 		event, err := telemetry.Normalize(telemetry.Event{SessionID: session, AgentID: agent, ChangeID: change.ChangeID, NodeName: target.NodeName, Action: target.Action, Summary: change.Summary, Why: change.Why, Parents: change.Parents, Status: "ready", Source: "agent"})
 		if err != nil {
 			return nil, err
 		}
+		h.recordWindowLocked(&event)
 		event.ID = strconv.FormatUint(h.next+uint64(i)+1, 10)
 		event.Timestamp = now.Format(time.RFC3339Nano)
 		data, err := json.Marshal(event)

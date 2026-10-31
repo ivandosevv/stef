@@ -10,6 +10,14 @@ describe('live data boundary', () => {
     expect(isStreamMessage({ type: 'workspaces', workspaces: [room] })).toBe(true);
     expect(isStreamMessage({ type: 'snapshot', repo: '/project' })).toBe(true);
   });
+  it('validates activity provenance and decisions without accepting arbitrary actions or modes', () => {
+    expect(isStreamMessage({ type: 'snapshot', repo: '/project', update_mode: 'activity', events: [{ ...event(), action: 'decided', recording_mode: 'activity' }] })).toBe(true);
+    for (const recording_mode of ['thinking', null, {}, '']) expect(isAgentEvent({ ...event(), recording_mode })).toBe(false);
+    for (const recording_from of ['NaN', '-1', '9'.repeat(10000), null]) expect(isAgentEvent({ ...event(), recording_from })).toBe(false);
+    expect(isAgentEvent({ ...event(), recording_mode: 'activity', recording_from: '0' })).toBe(true);
+    expect(isAgentEvent({ ...event(), action: 'thinking' })).toBe(false);
+    expect(isStreamMessage({ type: 'snapshot', repo: '/project', update_mode: 'thinking' })).toBe(false);
+  });
   it('rejects IDs that would crash or exhaust numeric comparisons', () => {
     for (const id of ['0', '-1', '+1', '01', 'abc', '18446744073709551616', '9'.repeat(10000), null]) {
       expect(isAgentEvent({ ...event(), id })).toBe(false);

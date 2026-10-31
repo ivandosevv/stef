@@ -210,13 +210,41 @@ func TestRunReminderHonorsModeAndClearedWindows(t *testing.T) {
 		{"milestones", "10", []telemetry.PendingChange{{ChangeID: "11", NodeName: "main.go", Action: "modified"}}},
 		{"disabled", "10", []telemetry.PendingChange{{ChangeID: "11", NodeName: "main.go", Action: "modified"}}},
 		{"files", "12", []telemetry.PendingChange{{ChangeID: "11", NodeName: "main.go", Action: "modified"}}},
+		{"activity", "12", []telemetry.PendingChange{{ChangeID: "11", NodeName: "main.go", Action: "modified"}}},
 		{"files", "10", nil},
+		{"activity", "10", nil},
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			f := newReminderFixture(t)
 			f.mode, f.from, f.pending = tc.mode, tc.from, tc.pending
 			if output := runReminder(t, f, "codex", "PostToolUse", "apply_patch", map[string]string{"path": "main.go"}); output != "" {
 				t.Fatalf("inactive revision reminded: %s", output)
+			}
+		})
+	}
+}
+
+func TestRunReminderExplainsExactRevisionsInAllActivity(t *testing.T) {
+	for _, client := range []string{"claude", "codex"} {
+		t.Run(client, func(t *testing.T) {
+			f := newReminderFixture(t)
+			f.mode = "activity"
+			f.pending = []telemetry.PendingChange{{ChangeID: "11", NodeName: "main.go", Action: "modified"}}
+			tool := "Edit"
+			input := map[string]string{"file_path": "main.go"}
+			if client == "codex" {
+				tool = "apply_patch"
+				input = map[string]string{"path": "main.go"}
+			}
+			context := contextText(t, runReminder(t, f, client, "PostToolUse", tool, input))
+			if !strings.Contains(context, "(All activity)") || strings.Contains(context, "(Every file)") {
+				t.Fatal("All activity reminder displayed the wrong reporting mode")
+			}
+			if !strings.Contains(context, `"change_id":"11"`) || !strings.Contains(context, "before another edit, test, or final reply") {
+				t.Fatal("All activity lost its exact file explanation reminder")
+			}
+			if strings.Contains(context, "private-") || strings.Join(f.requests, ",") != "/healthz,/api/activity,/api/explanation-reminder" {
+				t.Fatal("All activity made extra requests or leaked private hook material")
 			}
 		})
 	}

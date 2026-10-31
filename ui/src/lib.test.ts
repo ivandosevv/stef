@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { activeCollisions, activityEdges, eventsAt, latestNodes, mergeEvents, workflowAgents, workflowSteps, workflowWindows, workflowEdges, type AgentEvent } from './lib';
+import { activeCollisions, activityEdges, eventsAt, latestNodes, mergeEvents, workflowAgents, workflowSteps, workflowWindows, workflowEdges, isUpdateMode, phaseLabel, stepReason, type AgentEvent } from './lib';
 
 function event(id: number, node = 'main.go', options: Partial<AgentEvent> = {}): AgentEvent {
   return { id: String(id), timestamp: new Date(100000 + id * 1000).toISOString(), agent_id: 'alpha', node_name: node, action: 'modified', summary: 'Updated the request boundary', why: 'Requests need a clear boundary.', status: 'running', source: 'agent', ...options };
@@ -190,4 +190,109 @@ it('keeps developer notes from replacing code nodes, rationale, or workflow stag
   expect(latestNodes(events)).toEqual([events[0]]);
   expect(activityEdges(events)).toEqual([]);
   expect(workflowAgents(events)).toEqual([]);
+});
+
+
+describe('All activity recording', () => {
+  const observed = (id: number, phase: string, options: Partial<AgentEvent> = {}) => event(id, '@workflow', {
+    source: 'hook', category: 'activity', action: 'scouted', phase, tool: 'exec_command',
+    why: 'Generic observer text is not an agent explanation.', recording_mode: 'activity', ...options,
+  });
+
+  it('preserves each supported operation and decision without coalescing separate calls', () => {
+    const phases = ['started', 'reading', 'searching', 'editing', 'testing', 'terminal', 'tool_done', 'completed', 'failed'];
+    const events = phases.map((phase, index) => observed(index + 1, phase));
+    events.push(observed(10, 'terminal'), observed(11, 'terminal'));
+    events.push(event(12, '@workflow', { action: 'decided', recording_mode: 'activity', summary: 'Keep validation at entry', why: 'Reject unsafe input before any file is read.' }));
+    const steps = workflowSteps(events, 'activity');
+    expect(steps.map(step => step.id)).toEqual(events.map(step => step.id));
+    expect(steps[5].summary).toBe('Running terminal command · exec_command');
+    expect(steps[2].summary).toBe('Searching project context · exec_command');
+    expect(steps[11]).toMatchObject({ action: 'decided', why: 'Reject unsafe input before any file is read.' });
+    expect(steps.slice(0, 11).every(step => step.why === '' && !step.explanation_pending)).toBe(true);
+    expect(workflowEdges(steps)).toHaveLength(11);
+  });
+
+  it('keeps the existing file and milestone views free of extended lifecycle and decision rows', () => {
+    const events = [observed(1, 'started'), observed(2, 'searching'), observed(3, 'terminal'), observed(4, 'completed'),
+      event(5, '@workflow', { action: 'decided', recording_mode: 'activity' }),
+      event(6, 'main.ts', { summary: 'Save the boundary', recording_mode: 'files' })];
+    expect(workflowSteps(events, 'files').map(step => step.id)).toEqual(['6']);
+    expect(workflowSteps(events, 'milestones').map(step => step.id)).toEqual(['6']);
+    expect(workflowSteps(events, 'disabled')).toEqual([]);
+    expect(workflowSteps([observed(1, 'private_analysis'), observed(2, 'terminal', { recording_mode: undefined })], 'activity')).toEqual([]);
+  });
+
+  it('preserves concrete file searches and exact context in Every file while hiding generic searches', () => {
+    const target = observed(1, 'searching', { session_id: 'a', node_name: 'main.ts', tool: 'Grep', recording_mode: 'files', summary: 'Search the entry point' });
+    const generic = observed(2, 'searching', { recording_mode: 'files' });
+    const context = event(3, 'main.ts', { session_id: 'a', action: 'scouted', context_id: '1', why: 'Find the existing validation before changing the entry point.' });
+    const files = workflowSteps([target, generic, context], 'files');
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ id: '1', action: 'scouted', summary: 'Search the entry point', why: context.why, explanation: context.why });
+    expect(workflowSteps([{ ...target, recording_mode: undefined }], 'files')[0].action).toBe('scouted');
+    const full = workflowSteps([{ ...target, recording_mode: 'activity' }], 'activity');
+    expect(full[0].summary).toBe('Searching project context · Grep · main.ts');
+    expect(full[0].action).toBe('scouted');
+    expect(workflowWindows([target, generic, context], 'activity', '4').saved).toHaveLength(1);
+  });
+
+  it('uses exact requested context for recorded activity without treating observed text as a reason', () => {
+    const target = observed(1, 'terminal', { session_id: 'a' });
+    const steps = workflowSteps([target,
+      event(2, '@workflow', { context_id: '1', session_id: 'a', action: 'scouted', why: 'Run the focused test before changing the shared boundary.' }),
+      event(3, '@workflow', { context_id: '1', session_id: 'b', action: 'scouted', why: 'Another chat cannot overwrite the reason.' }),
+      event(4, '@workflow', { context_id: '1', session_id: 'a', action: 'modified', why: 'A mismatched action cannot overwrite the reason.' }),
+    ], 'activity');
+    expect(steps).toHaveLength(1);
+    expect(steps[0].why).toBe('Run the focused test before changing the shared boundary.');
+    expect(stepReason(workflowSteps([target], 'activity')[0])).toBe('Observed activity. The agent has not shared an explanation.');
+    expect(stepReason(steps[0])).toBe(steps[0].explanation);
+    expect(phaseLabel('searching')).toBe('Searching project context');
+  });
+
+  it('starts future activity at the boundary and restores only originally recorded activity in history', () => {
+    const events = [observed(1, 'terminal', { recording_mode: undefined }),
+      observed(2, 'terminal', { recording_mode: 'files' }),
+      observed(3, 'terminal'), observed(4, 'terminal'),
+      event(5, '@workflow', { action: 'decided', recording_mode: 'activity', why: 'Use a single trusted input boundary.' }),
+      event(6, 'main.ts', { recording_mode: 'milestones' }), observed(7, 'searching')];
+    const windows = workflowWindows(events, 'activity', '7');
+    expect(windows.current.map(step => step.id)).toEqual(['7']);
+    expect(windows.saved.map(step => step.id)).toEqual(['3', '4', '5', '6']);
+    const files = workflowWindows(events, 'files', '8');
+    expect(files.current).toEqual([]);
+    expect(files.saved.map(step => step.id)).toEqual(['3', '4', '5', '6', '7']);
+  });
+
+  it('restores the exact saved diff and late context across later recording modes', () => {
+    const diff = `@@ -1 +1 @@
+-old
++new
+`;
+    const events = [event(1, 'main.ts', { source: 'watcher', kind: 'file', recording_mode: 'activity', diff }),
+      event(2, 'main.ts', { change_id: '1', recording_mode: 'activity', why: 'Use the validated default.' }),
+      observed(3, 'terminal'),
+      event(5, 'main.ts', { context_id: '1', recording_mode: 'milestones', why: 'The entry point now validates the default before opening a source file.' }),
+      event(6, '@workflow', { context_id: '3', action: 'scouted', recording_mode: 'milestones', why: 'Run the boundary tests using the existing local test runner.' })];
+    const windows = workflowWindows(events, 'milestones', '4');
+    expect(windows.current).toEqual([]);
+    expect(windows.saved).toHaveLength(2);
+    expect(windows.saved[0]).toMatchObject({ id: '1', diff, explanation: events[3].why });
+    expect(windows.saved[1]).toMatchObject({ id: '3', explanation: events[4].why });
+  });
+
+  it('does not merge a repeated file step across separate saved recording windows', () => {
+    const windows = workflowWindows([
+      event(1, 'main.ts', { recording_mode: 'files', recording_from: '1' }),
+      event(2, 'main.ts', { recording_mode: 'files', recording_from: '2', why: 'Now verify the next saved window.' }),
+    ], 'activity', '3');
+    expect(windows.saved.map(step => step.id)).toEqual(['1', '2']);
+    expect(windows.saved[1].why).toBe('Now verify the next saved window.');
+  });
+
+  it('recognizes exactly the four requested recording options', () => {
+    for (const mode of ['milestones', 'files', 'activity', 'disabled']) expect(isUpdateMode(mode)).toBe(true);
+    for (const mode of ['thinking', 'all', null, {}]) expect(isUpdateMode(mode)).toBe(false);
+  });
 });

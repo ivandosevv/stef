@@ -13,31 +13,33 @@ import (
 const MaxText = 16384
 
 type Event struct {
-	SessionID   string   `json:"session_id,omitempty"`
-	ID          string   `json:"id"`
-	ChangeID    string   `json:"change_id,omitempty" jsonschema:"exact whole-file observation ID explained by this event"`
-	ContextID   string   `json:"context_id,omitempty" jsonschema:"retained visible step ID; only for developer-requested additional context"`
-	Timestamp   string   `json:"timestamp"`
-	AgentID     string   `json:"agent_id" jsonschema:"stable identifier of the reporting agent"`
-	NodeName    string   `json:"node_name" jsonschema:"repository-relative path or path#symbol"`
-	Action      string   `json:"action" jsonschema:"scouted, created, modified, deleted, or tested"`
-	Summary     string   `json:"summary" jsonschema:"brief badge, at most five words"`
-	Why         string   `json:"why" jsonschema:"one sentence explaining the actual decision"`
-	Status      string   `json:"status" jsonschema:"running or ready; ready releases the node claim"`
-	Source      string   `json:"source"`
-	Category    string   `json:"category,omitempty"`
-	Phase       string   `json:"phase,omitempty"`
-	Tool        string   `json:"tool,omitempty"`
-	TargetAgent string   `json:"target_agent,omitempty"`
-	NoteKind    string   `json:"note_kind,omitempty"`
-	Kind        string   `json:"kind,omitempty"`
-	Language    string   `json:"language,omitempty"`
-	Line        int      `json:"line,omitempty"`
-	Before      string   `json:"before,omitempty"`
-	After       string   `json:"after,omitempty"`
-	Diff        string   `json:"diff,omitempty"`
-	Parents     []string `json:"parents,omitempty"`
-	Collisions  []string `json:"collisions,omitempty"`
+	SessionID     string     `json:"session_id,omitempty"`
+	RecordingMode UpdateMode `json:"recording_mode,omitempty"`
+	RecordingFrom string     `json:"recording_from,omitempty"`
+	ID            string     `json:"id"`
+	ChangeID      string     `json:"change_id,omitempty" jsonschema:"exact whole-file observation ID explained by this event"`
+	ContextID     string     `json:"context_id,omitempty" jsonschema:"retained visible step ID; only for developer-requested additional context"`
+	Timestamp     string     `json:"timestamp"`
+	AgentID       string     `json:"agent_id" jsonschema:"stable identifier of the reporting agent"`
+	NodeName      string     `json:"node_name" jsonschema:"repository-relative path or path#symbol"`
+	Action        string     `json:"action" jsonschema:"scouted, created, modified, deleted, tested, or decided"`
+	Summary       string     `json:"summary" jsonschema:"brief badge, at most five words"`
+	Why           string     `json:"why" jsonschema:"one sentence explaining the actual decision"`
+	Status        string     `json:"status" jsonschema:"running or ready; ready releases the node claim"`
+	Source        string     `json:"source"`
+	Category      string     `json:"category,omitempty"`
+	Phase         string     `json:"phase,omitempty"`
+	Tool          string     `json:"tool,omitempty"`
+	TargetAgent   string     `json:"target_agent,omitempty"`
+	NoteKind      string     `json:"note_kind,omitempty"`
+	Kind          string     `json:"kind,omitempty"`
+	Language      string     `json:"language,omitempty"`
+	Line          int        `json:"line,omitempty"`
+	Before        string     `json:"before,omitempty"`
+	After         string     `json:"after,omitempty"`
+	Diff          string     `json:"diff,omitempty"`
+	Parents       []string   `json:"parents,omitempty"`
+	Collisions    []string   `json:"collisions,omitempty"`
 }
 
 func Normalize(e Event) (Event, error) {
@@ -87,7 +89,7 @@ func Normalize(e Event) (Event, error) {
 	}
 	e.NodeName = node
 	switch e.Action {
-	case "scouted", "created", "modified", "deleted", "tested":
+	case "scouted", "created", "modified", "deleted", "tested", "decided":
 	default:
 		return e, fmt.Errorf("unknown action %q", e.Action)
 	}

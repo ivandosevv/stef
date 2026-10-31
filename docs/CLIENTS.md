@@ -213,7 +213,7 @@ this local loopback companion. No permission or model-evaluated hooks are added.
 
 Codex and Claude post-edit hooks now return documented PostToolUse
 hookSpecificOutput.additionalContext with current pending IDs for concrete
-edit paths, only in Every file mode. The bounded reminder endpoint waits up to
+edit paths, in Every file and All activity modes. The bounded reminder endpoint waits up to
 300 ms for ordinary watcher debounce and never consumes developer notes. Reads,
 tests, shell commands, stef MCP calls, and other clients emit no reminder.
 The agent supplies the actual reason through report_changes; hooks do not infer
@@ -349,7 +349,7 @@ histories remain. Shared get_state includes bounded brief explanations for
 coordination at natural check-ins. It does not merge model chats, expose hidden
 reasoning, poll, or make background model calls.
 
-In Every file mode, trusted post-edit hooks use concrete file paths. Without
+In Every file and All activity modes, trusted post-edit hooks use concrete file paths. Without
 those signals, pass changed_paths containing only the relative paths from the
 actual edit to get_state with settle_ms=300. This claims exact observed revisions
 for the worker's workspace, then report_changes explains those exact IDs. The
@@ -360,10 +360,13 @@ into every private workflow.
 
 Use a stable agent_id. Read update_mode at task start and follow the compact
 reporting_instructions in receipts. milestones uses only major report_event
-updates with short reasons; disabled stops new reporting/check-ins for the turn.
+updates with short reasons; activity adds supported sanitized tool stages and
+brief public decisions using report_event action=decided; disabled stops new
+reporting/check-ins for the turn. Available hook detail varies by client.
+Neither MCP nor file observation exposes private internal thinking.
 User mode changes reach an already-working agent at its next check-in, not by
 interrupting the client's generation. No polling or measured token savings are implied.
-In files mode, after each edit, get_state with changed_paths and settle_ms=300 returns
+In files and activity modes, after each edit, get_state with changed_paths and settle_ms=300 returns
 pending file IDs; explain every file you changed in one report_changes batch.
 Keep each reason brief and tied to that revision. Missing reasons remain visible
 and a later edit needs a new reason. report_event handles reads/tests/plans. Developer

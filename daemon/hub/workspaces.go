@@ -128,7 +128,7 @@ func (h *Hub) applyRegisterLocked(id string) {
 		}
 		h.workspaceSettings[id] = setting
 	}
-	if (captureBefore == telemetry.UpdatesFiles) != (h.captureModeLocked() == telemetry.UpdatesFiles) {
+	if captureBefore.CapturesFiles() != h.captureModeLocked().CapturesFiles() {
 		h.captureEpoch++
 	}
 }
@@ -245,7 +245,7 @@ func (h *Hub) applyWorkspaceLocked(origin, room, action string) {
 	} else {
 		h.memberships[origin] = room
 	}
-	if (captureBefore == telemetry.UpdatesFiles) != (h.captureModeLocked() == telemetry.UpdatesFiles) {
+	if captureBefore.CapturesFiles() != h.captureModeLocked().CapturesFiles() {
 		h.captureEpoch++
 	}
 	h.originFrom[origin] = h.next + 1
@@ -294,7 +294,7 @@ func (h *Hub) ClaimChanges(origin string, paths []string) error {
 	}
 	room := h.resolveLocked(origin)
 	setting := h.settingLocked(room)
-	if setting.Mode != telemetry.UpdatesFiles {
+	if !setting.Mode.CapturesFiles() {
 		return nil
 	}
 	floor := h.originFrom[origin]
@@ -317,6 +317,7 @@ func (h *Hub) ClaimChanges(origin string, paths []string) error {
 		}
 		clone := event
 		clone.SessionID = room
+		h.recordWindowLocked(&clone)
 		clone.ID = strconv.FormatUint(h.next+uint64(len(clones))+1, 10)
 		data, err := json.Marshal(sessionControl{Control: "capture", WorkspaceID: room, ObservationID: event.ID, CapturedEvent: &clone})
 		if err != nil {
@@ -388,6 +389,7 @@ func (h *Hub) replayWorkspaceControl(control sessionControl) (bool, error) {
 		}
 		// Metadata and the exact revision share one atomic JSON record.
 		h.assigned[control.ObservationID] = control.WorkspaceID
+		h.recoverWindowLocked(control.CapturedEvent)
 		h.store(*control.CapturedEvent)
 		if id > h.next {
 			h.next = id

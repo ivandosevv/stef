@@ -15,7 +15,9 @@ export const isWorkspaceList = (value: unknown): value is Workspace[] => Array.i
 export function isAgentEvent(value: unknown): value is AgentEvent {
   if (!object(value) || !eventID(value.id) || !text(value.timestamp, 100) || !Number.isFinite(Date.parse(value.timestamp))) return false;
   if (!text(value.agent_id, 80) || !value.agent_id || !text(value.node_name, 500) || !value.node_name || !text(value.summary, 160) || !text(value.why, 2000)) return false;
-  if (!['scouted', 'created', 'modified', 'deleted', 'tested'].includes(value.action as string) || !['running', 'ready'].includes(value.status as string) || !['agent', 'watcher', 'demo', 'hook', 'human'].includes(value.source as string)) return false;
+  if (!['scouted', 'created', 'modified', 'deleted', 'tested', 'decided'].includes(value.action as string) || !['running', 'ready'].includes(value.status as string) || !['agent', 'watcher', 'demo', 'hook', 'human'].includes(value.source as string)) return false;
+  if (value.recording_from !== undefined && !eventID(value.recording_from, true)) return false;
+  if (value.recording_mode !== undefined && !isUpdateMode(value.recording_mode)) return false;
   if (value.category !== undefined && !['activity', 'feedback'].includes(value.category as string)) return false;
   if (!optionalText(value.session_id, 160) || !optionalText(value.phase, 100) || !optionalText(value.tool, 100) || !optionalText(value.kind, 80) || !optionalText(value.language, 40) || !optionalText(value.target_agent, 80) || !optionalText(value.note_kind, 20)) return false;
   if (!['before', 'after', 'diff'].every(key => optionalText(value[key], 16384))) return false;

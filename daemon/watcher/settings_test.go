@@ -11,65 +11,67 @@ import (
 
 func TestSuppressedSavesAdvanceBaselineWithoutDeferredChanges(t *testing.T) {
 	for _, mode := range []telemetry.UpdateMode{telemetry.UpdatesMilestones, telemetry.UpdatesDisabled} {
-		t.Run(string(mode), func(t *testing.T) {
-			root := t.TempDir()
-			path := filepath.Join(root, "main.ts")
-			removed := filepath.Join(root, "removed.ts")
-			created := filepath.Join(root, "created.ts")
-			write := func(name, value string) {
-				t.Helper()
-				if err := os.WriteFile(name, []byte(value), 0600); err != nil {
+		for _, resumed := range []telemetry.UpdateMode{telemetry.UpdatesFiles, telemetry.UpdatesActivity} {
+			t.Run(string(mode)+"/"+string(resumed), func(t *testing.T) {
+				root := t.TempDir()
+				path := filepath.Join(root, "main.ts")
+				removed := filepath.Join(root, "removed.ts")
+				created := filepath.Join(root, "created.ts")
+				write := func(name, value string) {
+					t.Helper()
+					if err := os.WriteFile(name, []byte(value), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				write(path, "original\n")
+				write(removed, "original\n")
+				h, err := hub.New(root, "")
+				if err != nil {
 					t.Fatal(err)
 				}
-			}
-			write(path, "original\n")
-			write(removed, "original\n")
-			h, err := hub.New(root, "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer h.Close()
-			w, err := New(root, h)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer w.Close()
-			if _, err := h.SetUpdateMode(mode); err != nil {
-				t.Fatal(err)
-			}
-			write(path, "suppressed edit\n")
-			write(created, "created while suppressed\n")
-			if err := os.Remove(removed); err != nil {
-				t.Fatal(err)
-			}
-			for _, name := range []string{path, created, removed} {
-				if err := w.process(name); err != nil {
+				defer h.Close()
+				w, err := New(root, h)
+				if err != nil {
 					t.Fatal(err)
 				}
-			}
-			if len(h.Snapshot().Events) != 0 {
-				t.Fatal("suppressed saves entered retained history")
-			}
-			if _, err := h.SetUpdateMode(telemetry.UpdatesFiles); err != nil {
-				t.Fatal(err)
-			}
-			for _, name := range []string{path, created, removed} {
-				if err := w.process(name); err != nil {
+				defer w.Close()
+				if _, err := h.SetUpdateMode(mode); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if len(h.Snapshot().Events) != 0 {
-				t.Fatal("enabling file mode replayed suppressed creates, edits, or deletes")
-			}
-			write(path, "visible edit\n")
-			if err := w.process(path); err != nil {
-				t.Fatal(err)
-			}
-			events := h.Snapshot().Events
-			if len(events) != 1 || events[0].NodeName != "main.ts" || events[0].Before != "suppressed edit\n" || events[0].After != "visible edit\n" {
-				t.Fatalf("next save compared against the wrong baseline: %+v", events)
-			}
-		})
+				write(path, "suppressed edit\n")
+				write(created, "created while suppressed\n")
+				if err := os.Remove(removed); err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{path, created, removed} {
+					if err := w.process(name); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if len(h.Snapshot().Events) != 0 {
+					t.Fatal("suppressed saves entered retained history")
+				}
+				if _, err := h.SetUpdateMode(resumed); err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{path, created, removed} {
+					if err := w.process(name); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if len(h.Snapshot().Events) != 0 {
+					t.Fatal("enabling file mode replayed suppressed creates, edits, or deletes")
+				}
+				write(path, "visible edit\n")
+				if err := w.process(path); err != nil {
+					t.Fatal(err)
+				}
+				events := h.Snapshot().Events
+				if len(events) != 1 || events[0].NodeName != "main.ts" || events[0].Before != "suppressed edit\n" || events[0].After != "visible edit\n" {
+					t.Fatalf("next save compared against the wrong baseline: %+v", events)
+				}
+			})
+		}
 	}
 }
 
@@ -107,5 +109,49 @@ func TestQueuedSuppressedSaveDoesNotCaptureAfterModeChanges(t *testing.T) {
 	}
 	if len(h.Snapshot().Events) != 0 {
 		t.Fatal("a queued disabled save was revived on enable")
+	}
+}
+
+func TestActivityAndFilesCaptureConsecutiveRevisions(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.ts")
+	write := func(value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("original\n")
+	h, err := hub.New(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	w, err := New(root, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	for index, mode := range []telemetry.UpdateMode{telemetry.UpdatesActivity, telemetry.UpdatesFiles, telemetry.UpdatesDisabled, telemetry.UpdatesActivity} {
+		if _, err := h.SetUpdateMode(mode); err != nil {
+			t.Fatal(err)
+		}
+		value := []string{"activity save\n", "file save\n", "disabled save\n", "resumed activity\n"}[index]
+		write(value)
+		if err := w.process(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events := h.Snapshot().Events
+	if len(events) != 3 {
+		t.Fatalf("expected three recorded saves, got %+v", events)
+	}
+	wantBefore := []string{"original\n", "activity save\n", "disabled save\n"}
+	wantAfter := []string{"activity save\n", "file save\n", "resumed activity\n"}
+	wantModes := []telemetry.UpdateMode{telemetry.UpdatesActivity, telemetry.UpdatesFiles, telemetry.UpdatesActivity}
+	for index, event := range events {
+		if event.Before != wantBefore[index] || event.After != wantAfter[index] || event.RecordingMode != wantModes[index] {
+			t.Fatalf("revision %d has wrong baseline or capture mode: %+v", index, event)
+		}
 	}
 }

@@ -34,7 +34,7 @@ func (h *Hub) ExplanationReminder(session string, paths []string) (telemetry.Rem
 		UpdatesFrom:    strconv.FormatUint(setting.From, 10),
 		PendingChanges: []telemetry.PendingChange{},
 	}
-	if setting.Mode != telemetry.UpdatesFiles {
+	if !setting.Mode.CapturesFiles() {
 		return state, nil
 	}
 	explained := make(map[string]bool)

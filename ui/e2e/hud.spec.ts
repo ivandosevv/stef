@@ -3,7 +3,7 @@ import { writeFile as filesystemWrite, unlink as filesystemUnlink } from 'node:f
 import { resolve, relative } from 'node:path';
 
 const report = (session: string, node: string, summary: string, why: string, parents: string[] = []) => ({ session_id: session, agent_id: 'test-agent', node_name: node, action: 'modified', summary, why, status: 'ready', parents });
-type UpdateMode = 'milestones' | 'files' | 'disabled';
+type UpdateMode = 'milestones' | 'files' | 'activity' | 'disabled';
 type SavedEvent = { id: string; source: string; kind?: string; node_name: string; action: string; before?: string; after?: string; change_id?: string; diff?: string };
 
 // Reset the current workspace before each independent browser scenario.
@@ -54,7 +54,7 @@ async function isolatedRoot(request: APIRequestContext): Promise<string> {
 }
 
 async function pickUpdates(page: Page, mode: UpdateMode) {
-  const labels = { milestones: 'Major milestones', files: 'Every file', disabled: 'Disabled' };
+  const labels = { milestones: 'Major milestones', files: 'Every file', activity: 'All activity', disabled: 'Disabled' };
   await page.getByRole('button', { name: 'Updates', exact: true }).click();
   await page.getByRole('menuitemradio', { name: new RegExp('^' + labels[mode]) }).click();
   await expect(page.getByRole('menu', { name: 'Updates', exact: true })).toHaveCount(0);
@@ -551,7 +551,7 @@ test('the compact Updates menu explains token cost and handles keyboard, narrow 
   const trigger = page.getByRole('button', { name: 'Updates', exact: true });
   const menu = page.getByRole('menu', { name: 'Updates', exact: true });
   await trigger.click();
-  await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(4);
   await expect(menu.getByText('New key steps only, with brief explanations.', { exact: true })).toBeVisible();
   await expect(menu.getByText('New saves from now on. Per-file explanations may use more tokens.', { exact: true })).toBeVisible();
   await expect(menu.getByText('Stop new updates. Keep saved history.', { exact: true })).toBeVisible();
@@ -562,6 +562,8 @@ test('the compact Updates menu explains token cost and handles keyboard, narrow 
   await expect(menu.getByRole('menuitemradio', { name: /^Major milestones/ })).toBeFocused();
   await page.keyboard.press('End');
   await expect(menu.getByRole('menuitemradio', { name: /^Disabled/ })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(menu.getByRole('menuitemradio', { name: /^All activity/ })).toBeFocused();
   await page.keyboard.press('ArrowUp');
   await expect(files).toBeFocused();
   await page.keyboard.press('Escape');
@@ -1517,7 +1519,13 @@ test('old unexplained files never re-enter pending reporting after milestones or
     expect(batch.status()).toBe(400);
     expect(await batch.text()).toContain('predates the current reporting window');
     expect((await checkIn(request, session)).pending_count).toBe(0);
-    const manual = await request.post('/api/events', { data: { ...report(session, name, 'Explain saved history on request', 'This older revision can still receive an explicitly requested explanation.'), action: old.action, change_id: old.id } });
+    const single = await request.post('/api/events', { data: { ...report(session, name, 'Do not explain old backlog', 'Automatic reporting applies only to the current window.'), action: old.action, change_id: old.id } });
+    expect(single.status()).toBe(400);
+    expect(await single.text()).toContain('predates the current reporting window');
+    await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('The agent hasn’t explained this save yet.');
+    await page.getByRole('button', { name: 'Request explanation', exact: true }).click();
+    const manual = await request.post('/api/events', { data: { ...report(session, name, 'Explain saved history on request', 'This older revision can still receive an explicitly requested explanation.'), action: old.action, context_id: old.id } });
+    expect(manual.ok()).toBe(true);
     expect((await manual.json()).accepted).toBe(true);
     await expect(page.getByRole('region', { name: 'Why this step' })).toContainText('This older revision can still receive an explicitly requested explanation.');
     expect((await checkIn(request, session)).pending_count).toBe(0);

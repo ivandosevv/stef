@@ -42,7 +42,7 @@ func handler(h *hub.Hub, uiDir, port string) http.Handler {
 			return
 		}
 		if !input.UpdateMode.Valid() {
-			http.Error(w, "update_mode must be milestones, files, or disabled", http.StatusBadRequest)
+			http.Error(w, "update_mode must be milestones, files, activity, or disabled", http.StatusBadRequest)
 			return
 		}
 		scope := r.URL.Query().Get("session_id")

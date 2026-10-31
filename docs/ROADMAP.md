@@ -21,7 +21,7 @@
 - [x] Minimal workflow labels, selected explanations, and directed arrows
 - [x] Compact Dark, Light, Eye comfort, and System appearance with saved preference
 - [x] Automatic saved-file steps, exact revision explanations, and pending-change MCP batches
-- [x] Saved Updates modes for explained milestones, every file, or Disabled
+- [x] Saved Updates modes for milestones, every file, All activity, or Disabled
 - [x] On-demand saved-revision Git-style diffs beside live AI explanations
 - [x] Minimal/Interactive local views and selected-change hunk/milestone visuals
 - [x] Independent workflow/properties scrolling, keyboard and touch containment

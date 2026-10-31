@@ -11,7 +11,8 @@ does not need Go, Node, make, or a stef IDE extension. Source setup has its own
 build prerequisites.
 
 The first setup may require your agent's normal MCP trust, reload, or import
-step. The installer reports the actual step. Once connected, the agent binds
+step. After updating stef from source, reconnect an already-running MCP server
+to load new reporting actions. The installer reports the actual step. Once connected, the agent binds
 its private workspace before opening the scoped view beside you. IDEs with a
 built-in browser can show it in an editor tab; other hosts can use its local
 browser link. A native macOS companion remains an optional source-build choice.
@@ -22,9 +23,11 @@ Select a step for its short explanation. Show diff opens that exact saved
 revision, with additions and removals. Suggest lets you send a note at the
 agent's next check-in. Clear resets the selected workspace's workflow.
 
-Updates chooses Major milestones, Every file, or Disabled. Changes apply to new
-work. Earlier steps stay available through Show saved history. Every file
-requires more explanations and may use more agent tokens.
+Updates chooses Major milestones, Every file, All activity, or Disabled. Changes
+apply to new work. Earlier steps stay available through Show saved history.
+All activity adds available searches, reads, tool stages, and brief decisions the
+agent shares. It cannot expose private thinking. Every file and All activity
+may use more agent tokens for explanations; observation makes no AI calls.
 
 Design chooses Minimal or Interactive. Interactive explores the selected saved
 change, with independent scrolling for the workflow and its details. Local

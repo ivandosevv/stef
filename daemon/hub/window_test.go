@@ -59,7 +59,7 @@ func TestWindowPersistsOrderedBoundaryAndNoOpWithoutBackfill(t *testing.T) {
 		t.Fatal("mixed-window batch had partial effects")
 	}
 	explicit := event("agent", old.NodeName, "ready")
-	explicit.SessionID, explicit.ChangeID = "chat-a", old.ID
+	explicit.SessionID, explicit.ContextID = "chat-a", old.ID
 	if _, err := h.Publish(explicit); err != nil {
 		t.Fatal("explicit retained-file clarification rejected", err)
 	}

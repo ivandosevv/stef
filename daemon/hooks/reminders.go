@@ -88,7 +88,7 @@ func Run(ctx context.Context, endpoint, clientName string, input io.Reader, outp
 	if err != nil || root != delivered.root || state.SessionID != delivered.activity.SessionID {
 		return fmt.Errorf("explanation reminder root or chat does not match")
 	}
-	if state.UpdateMode != telemetry.UpdatesFiles {
+	if !state.UpdateMode.CapturesFiles() {
 		return nil
 	}
 	window, err := strconv.ParseUint(state.UpdatesFrom, 10, 64)
@@ -118,7 +118,7 @@ func Run(ctx context.Context, endpoint, clientName string, input io.Reader, outp
 	if len(pending) == 0 && omittedPaths == 0 {
 		return nil
 	}
-	context := reminderContext(delivered.root, endpoint, delivered.activity, state.UpdatesFrom, pending, state.PendingCount, omittedPaths)
+	context := reminderContext(delivered.root, endpoint, delivered.activity, state.UpdateMode, state.UpdatesFrom, pending, state.PendingCount, omittedPaths)
 	if context == "" {
 		return nil
 	}
@@ -227,7 +227,11 @@ func reminderPaths(clientName string, raw []byte, root string) ([]string, int) {
 	return paths, omitted
 }
 
-func reminderContext(root, endpoint string, activity telemetry.Activity, window string, pending []telemetry.PendingChange, total, omittedPaths int) string {
+func reminderContext(root, endpoint string, activity telemetry.Activity, mode telemetry.UpdateMode, window string, pending []telemetry.PendingChange, total, omittedPaths int) string {
+	label := "Every file"
+	if mode == telemetry.UpdatesActivity {
+		label = "All activity"
+	}
 	command := ""
 	if executable, err := os.Executable(); err == nil {
 		command = " If stef MCP tools are unavailable, send the same report_changes JSON on stdin to: " + reminderQuote(executable) + " --report-changes --repo " + reminderQuote(root) + " --daemon " + reminderQuote(endpoint) + "."
@@ -241,9 +245,9 @@ func reminderContext(root, endpoint string, activity telemetry.Activity, window 
 		if incomplete {
 			guidance = " This reminder is incomplete. Report included IDs first. Recover remaining own IDs by POST to " + strings.TrimSuffix(endpoint, "/") + "/api/explanation-reminder with JSON {session_id: the metadata session_id, paths: remaining relative paths from this actual edit, settle_ms: 0}, at most 50 paths per request. This filters unrelated pending files before the limit. Report returned exact IDs; query again only after an accepted batch makes progress or for the next path batch. Do not poll or backfill earlier windows."
 		}
-		request := "stef: These saved revisions need your explanation (Every file). Call report_changes immediately, before another edit, test, or final reply."
+		request := "stef: These saved revisions need your explanation (" + label + "). Call report_changes immediately, before another edit, test, or final reply."
 		if len(pending) == 0 {
-			request = "stef: This bounded reminder omits edit paths or revisions (Every file). Use the path-filtered recovery below before another edit, test, or final reply."
+			request = "stef: This bounded reminder omits edit paths or revisions (" + label + "). Use the path-filtered recovery below before another edit, test, or final reply."
 		}
 		prefix := request + " Give each exact change_id a short summary and your actual reason in why; optional parents connect related paths. Explain only changes you made." + guidance + " Honor subsequent mode receipts. If the host shows a truncated context preview, read the complete reminder before assuming this list is complete." + command + " Metadata: "
 		metadata, _ := json.Marshal(struct {

@@ -41,8 +41,13 @@ export function visualHunks(diff: string): VisualHunk[] {
   return hunks;
 }
 
-export function milestoneAction(action: AgentEvent['action']): 'Explore' | 'Change' | 'Verify' {
-  return action === 'scouted' ? 'Explore' : action === 'tested' ? 'Verify' : 'Change';
+export function milestoneAction(action: AgentEvent['action']): 'Explore' | 'Change' | 'Verify' | 'Decision' {
+  return action === 'decided' ? 'Decision' : action === 'scouted' ? 'Explore' : action === 'tested' ? 'Verify' : 'Change';
+}
+
+export function stepAction(step: AgentEvent): string {
+  const observed: Record<string, string> = { started: 'Started', reading: 'Reading', searching: 'Searching', editing: 'Editing', testing: 'Testing', terminal: 'Terminal', tool_done: 'Finished', completed: 'Completed', failed: 'Failed' };
+  return step.source === 'hook' ? observed[step.phase ?? ''] ?? 'Observed' : milestoneAction(step.action);
 }
 
 export interface ReportedParent {

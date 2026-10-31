@@ -67,9 +67,11 @@ updating the reason without moving the step or losing the selection.
 
 ## Workflow and explanations
 
-The visible workflow contains each saved text-file revision, agent milestones,
-and supported read/edit/test signals. It excludes watcher symbols, lifecycle noise,
-feedback events, and backend diagnostics. Closed steps are 38px high and show
+Every file shows saved revisions, agent milestones, and supported read/edit/test
+signals. All activity additionally keeps distinct supported lifecycle and tool
+operations, including searches, plus brief agent-shared decisions (decided).
+Watcher symbols, feedback events, and backend diagnostics stay hidden. Hook
+rows display neutral observed context without inventing an agent reason. Closed steps are 38px high and show
 the filename and short label. Selecting one expands its brief explanation inline;
 Suggest reveals the input on demand. The header contains stef, Clear, and a small
 appearance button plus the compact Updates control. Show diff on a selected file
@@ -86,9 +88,10 @@ System. Shared CSS variables cover the page, labels, controls, inputs, and SVG
 arrows/arrowheads. The saved view preference is applied before mounting and
 survives reloads, chat switches, and Clear without modifying workflow history.
 System changes use the browser's media-query signal and make no model calls.
-The root-wide update_mode is stored as a journal settings control and included
+Each workspace's update_mode is stored as a journal settings control and included
 in snapshots and MCP receipts. files keeps automatic revisions and pending
-explanations. milestones records unlinked agent milestones with short reasons,
+explanations. activity also retains sanitized tool stages and brief decided
+reports. milestones records unlinked agent milestones with short reasons,
 while suppressing new watcher/hook/file explanation events. disabled suppresses
 all new activity and model feedback, retaining earlier history. The watcher
 advances its baseline without constructing suppressed diffs; epoch checks prevent
@@ -97,6 +100,10 @@ MCP guidance follows mode changes at the next check-in without model polling.
 The updates_from field marks the inclusive first event ID in the current reporting
 window. Each actual mode change advances it to the next ID; no-op changes keep
 it. Journal recovery derives it from ordered settings controls and event IDs.
+The hub assigns recording_mode and recording_from to events from the actual
+workspace setting, ignoring caller-supplied provenance. Saved activity is
+reconstructed in its original window. Legacy unmarked events use files behavior,
+so switching to activity never reveals older hidden hook noise.
 Automatic pending lists and model activity exclude earlier windows, and stale
 report_changes batches are rejected atomically. Old history remains available
 for explicit inspection and clarification rather than automatic backfill.
@@ -130,7 +137,7 @@ An unexplained revision offers Request explanation in either design, using the
 same exact feedback reference. A matching normal change_id explanation or
 context_id reply resolves its queued state; unrelated or later saves do not.
 
-In files mode, MCP initialization requests a report_changes batch after each edit tool, covering
+In files and activity modes, MCP initialization requests a report_changes batch after each edit tool, covering
 every affected file. get_state exposes bounded unexplained IDs/paths separately
 from recent activity, with an optional bounded debounce delay. The hub validates
 exact file/action/chat references and persists explanation batches atomically.

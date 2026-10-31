@@ -67,6 +67,10 @@ additional explanations. Compare line uses only the exact saved replacement
 block and highlights its changed text locally. CSS samples use supported literal
 values in an unchanged captured selector; uncertain scope gets no sample.
 
+All activity retains supported sanitized tool stages and brief public decisions.
+It does not collect private thinking, raw commands, prompts, or tool output.
+The hub stamps each event's original recording mode/window; switching modes
+does not expose previously hidden observations.
 Agent-authored explanations still consume tokens in that agent's conversation.
 Explain more queues an explicit request for that agent's next check-in. stef does
 not launch another model. Disabled stops new recording and reporting. This is

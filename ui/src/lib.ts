@@ -4,7 +4,7 @@ export interface AgentEvent {
   timestamp: string;
   agent_id: string;
   node_name: string;
-  action: 'scouted' | 'created' | 'modified' | 'deleted' | 'tested';
+  action: 'scouted' | 'created' | 'modified' | 'deleted' | 'tested' | 'decided';
   summary: string;
   why: string;
   status: 'running' | 'ready';
@@ -27,10 +27,12 @@ export interface AgentEvent {
   reference_id?: string;
   explanation?: string;
   explanation_pending?: boolean;
+  recording_mode?: UpdateMode;
+  recording_from?: string;
 }
 
-export type UpdateMode = 'milestones' | 'files' | 'disabled';
-export const isUpdateMode = (value: unknown): value is UpdateMode => ['milestones', 'files', 'disabled'].includes(value as string);
+export type UpdateMode = 'milestones' | 'files' | 'activity' | 'disabled';
+export const isUpdateMode = (value: unknown): value is UpdateMode => ['milestones', 'files', 'activity', 'disabled'].includes(value as string);
 
 export interface Workspace {
   workspace_id: string;
@@ -55,10 +57,19 @@ export function isFileChange(event: AgentEvent): boolean {
   return event.source === 'watcher' && !event.category && event.kind === 'file' && !event.node_name.includes('#');
 }
 
+const fileHookPhases = ['reading', 'searching', 'editing', 'testing', 'failed'];
+const activityHookPhases = ['started', 'reading', 'searching', 'editing', 'testing', 'terminal', 'tool_done', 'completed', 'failed'];
+
+export function stepReason(step: AgentEvent): string {
+  return step.explanation || step.why || (step.source === 'hook'
+    ? 'Observed activity. The agent has not shared an explanation.'
+    : step.source === 'watcher' ? 'The agent hasn’t explained this save yet.' : 'The agent hasn’t explained this step yet.');
+}
+
 // Each saved file revision remains a step. Only an exact agent reference supplies its why.
 export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'): AgentEvent[] {
   if (mode === 'disabled') return [];
-  if (mode === 'milestones') events = events.filter(event => event.source === 'agent' && !event.change_id);
+  if (mode === 'milestones') events = events.filter(event => event.source === 'agent' && !event.change_id && event.action !== 'decided');
   const steps: AgentEvent[] = [];
   const changes = new Map(events.filter(isFileChange).map(event => [event.id, event]));
   const explanations = new Map<string, AgentEvent>();
@@ -66,7 +77,7 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
   const retained = new Map(events.map(event => [event.id, event]));
   for (const event of events) {
     const target = event.context_id ? retained.get(event.context_id) : undefined;
-    const visibleTarget = target && !target.change_id && !target.context_id && (isFileChange(target) || (target.source === 'agent' && !target.category) || (target.source === 'hook' && ['reading', 'editing', 'testing', 'failed'].includes(target.phase ?? '')));
+    const visibleTarget = target && !target.change_id && !target.context_id && (isFileChange(target) || (target.source === 'agent' && !target.category) || (target.source === 'hook' && (target.recording_mode === 'activity' ? activityHookPhases : fileHookPhases).includes(target.phase ?? '')));
     if (visibleTarget && event.source === 'agent' && event.session_id === target.session_id && event.node_name === target.node_name && event.action === target.action) contexts.set(target.id, event);
     const change = event.change_id ? changes.get(event.change_id) : undefined;
     if (change && event.source === 'agent' && event.session_id === change.session_id && event.node_name === change.node_name && event.action === change.action) explanations.set(change.id, event);
@@ -86,17 +97,19 @@ export function workflowSteps(events: AgentEvent[], mode: UpdateMode = 'files'):
       continue;
     }
     const hook = event.source === 'hook';
-    if (hook && !['reading', 'editing', 'testing', 'failed'].includes(event.phase ?? '')) continue;
-    if (hook && event.node_name === '@workflow' && event.phase !== 'testing' && event.phase !== 'failed') continue;
-    const action = hook && event.phase === 'editing' ? 'modified' : hook && event.phase === 'reading' ? 'scouted' : hook && event.phase === 'testing' ? 'tested' : event.action;
+    if (event.action === 'decided' && mode !== 'activity') continue;
+    if (hook && !(mode === 'activity' && event.recording_mode === 'activity' ? activityHookPhases : fileHookPhases).includes(event.phase ?? '')) continue;
+    if (hook && mode !== 'activity' && event.node_name === '@workflow' && event.phase !== 'testing' && event.phase !== 'failed') continue;
+    const action = hook && event.phase === 'editing' ? 'modified' : hook && ['reading', 'searching'].includes(event.phase ?? '') ? 'scouted' : hook && event.phase === 'testing' ? 'tested' : event.action;
     const context = contexts.get(event.id);
     const explanation = context?.why ?? (hook ? '' : event.why);
     const why = explanation ? brief(explanation) : '';
-    const step: AgentEvent = { ...event, action, why, explanation, reference_id: event.id };
+    const summary = hook && mode === 'activity' ? phaseLabel(event.phase) + (event.tool ? ' · ' + event.tool : '') + (event.node_name !== '@workflow' ? ' · ' + shortName(event.node_name) : '') : event.summary;
+    const step: AgentEvent = { ...event, action, summary, why, explanation, reference_id: event.id };
     const previous = steps.at(-1);
     const genericTest = previous && action === 'tested' && previous.action === 'tested' && ((hook && step.phase === 'testing' && step.node_name === '@workflow') || (previous.source === 'hook' && previous.phase === 'testing' && previous.node_name === '@workflow'));
     const sameNode = previous && (genericTest || previous.node_name === step.node_name || ((previous.source === 'hook' || hook) && previous.node_name.split('#')[0] === step.node_name.split('#')[0]));
-    if (previous && previous.source !== 'watcher' && sameNode && previous.action === action && (previous.agent_id === step.agent_id || previous.source === 'hook' || hook)) {
+    if (mode !== 'activity' && previous && previous.source !== 'watcher' && sameNode && previous.action === action && (previous.agent_id === step.agent_id || previous.source === 'hook' || hook)) {
       steps[steps.length - 1] = hook && previous.source === 'agent' ? previous : { ...step, id: previous.id, parents: [...new Set([...(previous.parents ?? []), ...(step.parents ?? [])])] };
     } else steps.push(step);
   }
@@ -109,7 +122,26 @@ export function workflowWindows(events: AgentEvent[], mode: UpdateMode, updatesF
   const oldIDs = new Set(events.filter(event => !isCurrent(event.id)).map(event => event.id));
   const current = workflowSteps(events.filter(event => isCurrent(event.id)), mode);
   // Late, explicitly requested context still updates its retained historical step.
-  const saved = workflowSteps(events.filter(event => oldIDs.has(event.id) || (event.context_id && oldIDs.has(event.context_id)) || (event.change_id && oldIDs.has(event.change_id))), 'files');
+  const retained = events.filter(event => oldIDs.has(event.id) || (event.context_id && oldIDs.has(event.context_id)) || (event.change_id && oldIDs.has(event.change_id)));
+  // Only provenance from the original recording restores extended activity.
+  // Legacy history keeps its ordinary file view, even after selecting All activity.
+  const reportsByTarget = new Map<string, AgentEvent[]>();
+  for (const event of retained) {
+    const target = event.change_id ?? event.context_id;
+    if (target) reportsByTarget.set(target, [...(reportsByTarget.get(target) ?? []), event]);
+  }
+  const groups: { mode: UpdateMode; from?: string; events: AgentEvent[] }[] = [];
+  for (const event of retained) {
+    if (event.change_id || event.context_id || event.source === 'human' || event.category === 'feedback') continue;
+    const recordedMode = event.recording_mode ?? 'files';
+    const last = groups.at(-1);
+    if (last?.mode === recordedMode && last.from === event.recording_from) last.events.push(event);
+    else groups.push({ mode: recordedMode, from: event.recording_from, events: [event] });
+  }
+  const saved = groups.flatMap(group => {
+    const reports = group.events.flatMap(event => reportsByTarget.get(event.id) ?? []);
+    return workflowSteps([...group.events, ...reports].sort((a, b) => BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0), group.mode);
+  });
   return { current, saved };
 }
 
@@ -172,7 +204,7 @@ export function workflowAgents(events: AgentEvent[]): AgentEvent[] {
   return [...agents.values()].slice(-8).reverse();
 }
 export function phaseLabel(phase?: string): string {
-  const labels: Record<string, string> = { started: 'Session started', reading: 'Reading project context', editing: 'Applying code changes', testing: 'Running test command', terminal: 'Running terminal command', tool_done: 'Tool finished', completed: 'Agent turn finished', failed: 'Tool reported a failure' };
+  const labels: Record<string, string> = { started: 'Session started', reading: 'Reading project context', searching: 'Searching project context', editing: 'Applying code changes', testing: 'Running test command', terminal: 'Running terminal command', tool_done: 'Tool finished', completed: 'Agent turn finished', failed: 'Tool reported a failure' };
   return labels[phase ?? ''] ?? 'Activity observed';
 }
 

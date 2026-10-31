@@ -138,7 +138,7 @@ func TestCursorOwnMCPCallbacksAreIgnoredAndToolLabelsBounded(t *testing.T) {
 			t.Fatalf("stef callback %s accepted", tool)
 		}
 	}
-	for tool, want := range map[string]string{"custom-secret-tool": "Tool", "MCP:external-secret-tool": "MCP", "Read": "Read"} {
+	for tool, want := range map[string]string{"custom-secret-tool": "Tool", "MCP:external-secret-tool": "MCP", "Read": "Read", "Grep": "Grep", "Glob": "Glob", "Search": "Search"} {
 		a, err := hooks.Cursor(cursorPayload(t, root, "postToolUse", map[string]any{"tool_name": tool}), root)
 		if err != nil || a.Tool != want {
 			t.Fatalf("unsafe label %q: %#v %v", tool, a, err)

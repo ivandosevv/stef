@@ -64,6 +64,10 @@ start model calls. Updates and Clear apply to the selected workspace. Never poll
   reply. Batch every changed file, including helpers, tests, and cooperating
   agents' edits when they explicitly share this workspace. Use 2 to 4 word
   summaries and one short user-facing reason.
+- activity: follow the exact file reporting rule above, and share brief public
+  decisions through report_event action=decided when useful. Available sanitized
+  hook stages appear locally. Never send private thinking, prompts, commands,
+  or output. Extra agent reports may use tokens; do not backfill older activity.
 - disabled: stop reporting and extra check-ins for this turn. Recheck the mode
   at the next task's start.
 

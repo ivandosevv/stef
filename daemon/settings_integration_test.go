@@ -187,7 +187,7 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 				}
 				var claimed bridge.State
 				call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent", ChangedPaths: []string{path}}, &claimed)
-				if claimed.UpdateMode != telemetry.UpdatesFiles {
+				if !claimed.UpdateMode.CapturesFiles() {
 					if event.ID != "" {
 						t.Fatal("watcher captured a file while no workspace requested file updates")
 					}
@@ -285,6 +285,48 @@ func TestReportingModesOverMCPTransports(t *testing.T) {
 			staleBatch, err := session.CallTool(ctx, &sdk.CallToolParams{Name: "report_changes", Arguments: bridge.ChangesInput{SessionID: selected.SessionID, AgentID: "agent", Changes: []telemetry.ChangeExplanation{{ChangeID: oldPending.ID, Summary: "Late old-window explanation", Why: "This file predates the selected reporting window."}}}})
 			if err != nil || !staleBatch.IsError {
 				t.Fatalf("transport accepted automatic old-window backfill: %+v %v", staleBatch, err)
+			}
+			mode(telemetry.UpdatesActivity)
+			call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent"}, &state)
+			if state.UpdateMode != telemetry.UpdatesActivity || len(state.Events) != 0 || state.PendingCount != 0 {
+				t.Fatalf("activity mode backfilled earlier work: %+v", state)
+			}
+			activityInput := input
+			activityInput.ChangeID = ""
+			activityInput.NodeName, activityInput.Action = "@workflow", "decided"
+			activityInput.Summary = "Keep decisions brief"
+			activityInput.Why = "Share the task choice without an internal reasoning transcript."
+			call("report_event", activityInput, &receipt)
+			if !receipt.Accepted || receipt.UpdateMode != telemetry.UpdatesActivity {
+				t.Fatalf("activity decision rejected over transport: %+v", receipt)
+			}
+			observation, err := (telemetry.Activity{SessionID: selected.SessionID, AgentID: "agent", Phase: "searching", Tool: "Search"}).Event()
+			if err != nil {
+				t.Fatal(err)
+			}
+			observed, err := h.Publish(observation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			activitySave := observe("activity.ts")
+			call("get_state", bridge.StateInput{SessionID: selected.SessionID, AgentID: "agent"}, &state)
+			if state.UpdateMode != telemetry.UpdatesActivity || len(state.Events) != 3 || state.PendingCount != 1 || state.PendingChanges[0].ChangeID != activitySave.ID {
+				t.Fatalf("activity transport lost operations or exact file coverage: %+v", state)
+			}
+			call("report_changes", bridge.ChangesInput{SessionID: selected.SessionID, AgentID: "agent", Changes: []telemetry.ChangeExplanation{{ChangeID: activitySave.ID, Summary: "Explain this save", Why: "Keep exact saved-file reasons available alongside tool activity."}}}, &explained)
+			if !explained.Accepted || explained.UpdateMode != telemetry.UpdatesActivity || explained.PendingCount != 0 {
+				t.Fatalf("activity file explanation rejected: %+v", explained)
+			}
+			mode(telemetry.UpdatesFiles)
+			activityInput.Action, activityInput.ContextID = observed.Action, observed.ID
+			call("report_event", activityInput, &contextReceipt)
+			if !contextReceipt.Accepted {
+				t.Fatalf("explicit retained activity context rejected: %+v", contextReceipt)
+			}
+			activityInput.Action, activityInput.ContextID = "decided", ""
+			call("report_event", activityInput, &receipt)
+			if receipt.Accepted {
+				t.Fatal("files mode accepted automatic detailed decisions")
 			}
 			mode(telemetry.UpdatesDisabled)
 			contextInput.ContextID = first.ID

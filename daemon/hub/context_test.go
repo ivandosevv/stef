@@ -124,12 +124,14 @@ func TestRequestedContextHookTargetsMatchVisibleWorkflow(t *testing.T) {
 		visible     bool
 	}{
 		{"reading", "main.ts", true},
+		{"searching", "main.ts", true},
 		{"editing", "main.ts", true},
 		{"testing", "main.ts", true},
 		{"failed", "main.ts", true},
 		{"testing", "", true},
 		{"failed", "", true},
 		{"reading", "", false},
+		{"searching", "", false},
 		{"editing", "", false},
 		{"started", "main.ts", false},
 		{"terminal", "main.ts", false},

@@ -137,6 +137,7 @@ func New(repo, journalPath string) (*Hub, error) {
 			file.Close()
 			return nil, err
 		}
+		h.recoverWindowLocked(&event)
 		h.store(event)
 		if id, err := strconv.ParseUint(event.ID, 10, 64); err == nil && id > h.next {
 			h.next = id
@@ -233,6 +234,7 @@ func (h *Hub) Publish(input telemetry.Event) (telemetry.Event, error) {
 			sort.Strings(e.Collisions)
 		}
 	}
+	h.recordWindowLocked(&e)
 	data, err := json.Marshal(e)
 	if err != nil {
 		return e, err

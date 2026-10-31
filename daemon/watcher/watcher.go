@@ -239,7 +239,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 					continue // Bound memory during a filesystem event flood.
 				}
 				mode, epoch := w.hub.CaptureState()
-				state := captureState{enabled: mode == telemetry.UpdatesFiles, epoch: epoch}
+				state := captureState{enabled: mode.CapturesFiles(), epoch: epoch}
 				if previous, exists := pending[event.Name]; exists && (!previous.enabled || previous.epoch != epoch) {
 					// A coalesced save across a mode change belongs to the suppressed
 					// baseline; do not revive it because a later fs event arrived.
@@ -256,7 +256,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 			for _, name := range names {
 				mode, epoch := w.hub.CaptureState()
 				queued := pending[name]
-				capture := queued.enabled && mode == telemetry.UpdatesFiles && queued.epoch == epoch
+				capture := queued.enabled && mode.CapturesFiles() && queued.epoch == epoch
 				info, err := os.Lstat(name)
 				if err == nil && info.IsDir() {
 					if err := w.scanWithCapture(name, true, capture); err != nil {
@@ -356,7 +356,7 @@ func (w *Watcher) replaceBaseline(rel string, current map[string]Symbol) {
 
 func (w *Watcher) changes(file string, before, after map[string]Symbol, capture bool) error {
 	// Still advance the baseline in process, without building suppressed diffs.
-	if !capture || w.hub.Settings().UpdateMode != telemetry.UpdatesFiles {
+	if !capture || !w.hub.Settings().UpdateMode.CapturesFiles() {
 		return nil
 	}
 	nodes := make(map[string]struct{})

@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ivandosevv/stef/daemon/telemetry"
@@ -23,10 +24,12 @@ func (h *Hub) captureModeLocked() telemetry.UpdateMode {
 	}
 	mode := telemetry.UpdatesDisabled
 	for _, setting := range h.workspaceSettings {
-		if setting.Mode == telemetry.UpdatesFiles {
-			return telemetry.UpdatesFiles
+		if setting.Mode == telemetry.UpdatesActivity {
+			return telemetry.UpdatesActivity
 		}
-		if setting.Mode == telemetry.UpdatesMilestones {
+		if setting.Mode.CapturesFiles() {
+			mode = telemetry.UpdatesFiles
+		} else if setting.Mode == telemetry.UpdatesMilestones && !mode.CapturesFiles() {
 			mode = telemetry.UpdatesMilestones
 		}
 	}
@@ -44,7 +47,7 @@ func (h *Hub) CaptureState() (telemetry.UpdateMode, uint64) {
 // unscoped calls retain the earlier root preference for old journals and clients.
 func (h *Hub) SetUpdateMode(mode telemetry.UpdateMode, session ...string) (telemetry.Settings, error) {
 	if !mode.Valid() {
-		return telemetry.Settings{}, fmt.Errorf("update_mode must be milestones, files, or disabled")
+		return telemetry.Settings{}, fmt.Errorf("update_mode must be milestones, files, activity, or disabled")
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -67,7 +70,7 @@ func (h *Hub) SetUpdateMode(mode telemetry.UpdateMode, session ...string) (telem
 			setting.From = h.next + 1
 			setting.CaptureFrom = h.next + 1
 			h.workspaceSettings[id] = setting
-			if (captureBefore == telemetry.UpdatesFiles) != (h.captureModeLocked() == telemetry.UpdatesFiles) {
+			if captureBefore.CapturesFiles() != h.captureModeLocked().CapturesFiles() {
 				h.captureEpoch++
 			}
 			h.clearClaimsLocked(id)
@@ -99,5 +102,28 @@ func (h *Hub) suppressLocked(e telemetry.Event) bool {
 	if mode == telemetry.UpdatesDisabled {
 		return true
 	}
+	if e.Action == "decided" && mode != telemetry.UpdatesActivity && e.ContextID == "" {
+		return true
+	}
 	return mode == telemetry.UpdatesMilestones && (e.Source == "watcher" || e.Source == "hook" || e.ChangeID != "") && e.ContextID == ""
+}
+
+// Recording provenance is assigned by the hub, never by an incoming caller.
+func (h *Hub) recordWindowLocked(e *telemetry.Event) {
+	setting := h.settingLocked(e.SessionID)
+	e.RecordingMode = setting.Mode
+	if e.Source == "watcher" && e.SessionID == "local" && h.workspaceEnabled {
+		e.RecordingMode = h.captureModeLocked()
+	}
+	e.RecordingFrom = strconv.FormatUint(setting.From, 10)
+}
+
+// Old journals had no activity mode; missing metadata must not reveal extra rows.
+func (h *Hub) recoverWindowLocked(e *telemetry.Event) {
+	if e.RecordingMode == "" {
+		h.recordWindowLocked(e)
+		if e.RecordingMode == telemetry.UpdatesActivity {
+			e.RecordingMode = telemetry.UpdatesFiles
+		}
+	}
 }

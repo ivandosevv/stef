@@ -24,9 +24,12 @@ func (h *Hub) validateContextLocked(e telemetry.Event) error {
 			break
 		}
 		milestone := (target.Source == "agent" || target.Source == "") && target.Category == ""
-		hook := target.Source == "hook" && target.Category == "activity" && (target.Phase == "reading" || target.Phase == "editing" || target.Phase == "testing" || target.Phase == "failed")
+		hook := target.Source == "hook" && target.Category == "activity" && (target.Phase == "reading" || target.Phase == "searching" || target.Phase == "editing" || target.Phase == "testing" || target.Phase == "failed")
 		if target.NodeName == "@workflow" && target.Phase != "testing" && target.Phase != "failed" {
 			hook = false
+		}
+		if target.Source == "hook" && target.Category == "activity" && target.RecordingMode == telemetry.UpdatesActivity && telemetry.ValidPhase(target.Phase) {
+			hook = true
 		}
 		if !isFileChange(target) && !milestone && !hook {
 			break

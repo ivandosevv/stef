@@ -114,7 +114,7 @@ In milestones mode, report only major steps with brief reasons through
 report_event. Use the real action, running/ready state, and reported parents
 to support its local visualization. Skip file explanations and per-edit check-ins.
 
-In files mode, saved revisions are attributed using concrete edit paths.
+In files or activity mode, saved revisions are attributed using concrete edit paths.
 Prepare each file's brief reason while preparing the edit. After each edit tool, use
 the exact pending IDs from a trusted post-edit reminder, or call get_state once
 with settle_ms=300 and changed_paths containing only the relative paths from
@@ -134,7 +134,7 @@ visibly unexplained. Per-file explanations can use more agent tokens than major
 milestones; no measured token amount is promised.
 
 Codex and Claude PostToolUse hooks can return bounded metadata reminders for
-their concrete edit paths in files mode. They neither generate reasons nor
+their concrete edit paths in files or activity mode. They neither generate reasons nor
 consume developer questions. Generated PostToolUse handlers deliver their context
 before the agent resumes, with a bounded local wait and fail-open errors. Rerun
 setup to migrate older async stef handlers; changed definitions may need host
@@ -150,6 +150,13 @@ If the host has not loaded stef tools, the existing executable accepts the same
 report_changes JSON through stdin with --report-changes --repo <verified-root>
 --daemon <verified-endpoint>. This uses MCP to an existing root-matched daemon;
 it neither starts another agent nor executes edits. Use only current exact IDs.
+
+In activity mode, also share concise public choices through report_event with
+action=decided and a short why when useful. Supported hooks record sanitized
+search/read/edit/test/tool stages locally; host coverage varies. Do not duplicate
+every observed tool call or send private reasoning, prompts, raw commands, or
+output. This mode starts now, with no retrospective reporting. Extra agent
+reports may use tokens; observation itself makes no model calls.
 
 In disabled mode, stop reporting and additional check-ins for the rest of this
 turn. Read the mode again at the start of the next task. Saved history is retained;
@@ -168,7 +175,7 @@ When that question arrives in feedback, answer only its referenced retained
 step using report_event with context_id, matching the note's node and action,
 and a concise fuller user-facing why. This updates the original step without
 changing its recorded code. Explicit context can answer a historical step
-in files or milestones; disabled still stops reporting. Do not expand other
+in files, activity, or milestones; disabled still stops reporting. Do not expand other
 steps or retry an old automatic batch.
 
 When the selected mode permits it, use report_event for reads, tests, or plans; change_id can attach a single reason

@@ -15,7 +15,6 @@ import (
 
 var ErrIgnored = errors.New("hook is irrelevant to workflow observation")
 var patchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$`)
-var readCommand = regexp.MustCompile(`(?:^|[;&|]\s*)\s*(?:cat|rg|grep|sed|head|tail|ls|find|pwd|wc)\b`)
 var failedExit = regexp.MustCompile(`(?m)^(?:Process exited with code|Exit code:)\s*([0-9]+)\b`)
 
 // Codex adapts the documented local hook contract, not private transcripts.
@@ -42,7 +41,7 @@ func Codex(raw []byte, root string) (telemetry.Activity, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return telemetry.Activity{}, fmt.Errorf("hook cwd is outside the tracked root")
 	}
-	if strings.HasPrefix(input.Tool, "mcp__stef__") {
+	if cursorOwnTool(input.Tool) {
 		return telemetry.Activity{}, ErrIgnored
 	}
 	sum := sha256.Sum256([]byte(input.SessionID))
@@ -50,7 +49,7 @@ func Codex(raw []byte, root string) (telemetry.Activity, error) {
 	if input.SessionID != "" {
 		id = fmt.Sprintf("codex-%x", sum[:4])
 	}
-	a := telemetry.Activity{AgentID: id, Tool: input.Tool}
+	a := telemetry.Activity{AgentID: id, Tool: hookToolLabel(input.Tool)}
 	if input.SessionID != "" {
 		a.SessionID = fmt.Sprintf("codex-%x", sum[:16])
 	}
@@ -77,21 +76,15 @@ func Codex(raw []byte, root string) (telemetry.Activity, error) {
 		switch {
 		case strings.Contains(tool, "patch") || tool == "edit" || tool == "write":
 			a.Phase = "editing"
-		case strings.Contains(tool, "read") || tool == "grep" || tool == "glob":
+		case searchTool(tool):
+			a.Phase = "searching"
+		case strings.Contains(tool, "read"):
 			a.Phase = "reading"
 		default:
 			a.Phase = "terminal"
 		}
 		if tool == "bash" || strings.HasSuffix(tool, "exec_command") {
-			if readCommand.MatchString(args.Command) {
-				a.Phase = "reading"
-			}
-			for _, test := range []string{"go test", "npm test", "npm run test", "pytest", "cargo test", "gradle test", "./gradlew test", "mvn test", "python -m unittest", "python3 -m unittest"} {
-				if strings.Contains(strings.ToLower(args.Command), test) {
-					a.Phase = "testing"
-					break
-				}
-			}
+			a.Phase = commandActivityPhase(args.Command)
 		}
 	case "PostToolUse":
 		a.Phase = "tool_done"

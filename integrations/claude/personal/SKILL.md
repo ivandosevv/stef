@@ -33,10 +33,13 @@ Call get_state once at task
 start and verify its repo matches the project above. Follow update_mode and
 reporting_instructions in receipts.
 
-Major milestones need only brief reasons. Every file needs the exact saved
+Major milestones need only brief reasons. Every file and All activity need the exact saved
 revision explained immediately after each edit, before another edit or test.
 Use trusted hook IDs or get_state with changed_paths from your actual edit and
 settle_ms=300, then report_changes with the exact returned revision IDs.
+All activity also shows available sanitized tool stages and brief public
+decisions via report_event action=decided. Never send private thinking, prompts,
+commands, or output. Extra agent reports may use tokens. Start with new work.
 Disabled stops reporting and extra check-ins for that turn. Only explain edits
 from this chat in the selected project. Passive capture and local visuals make
 no extra model calls.

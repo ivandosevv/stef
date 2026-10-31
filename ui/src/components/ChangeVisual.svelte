@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { isFileChange, type AgentEvent } from '../lib';
+  import { isFileChange, stepReason, type AgentEvent } from '../lib';
   import { diffHunks, isTruncatedDiff, type DiffLine } from '../diff';
   import { effectValue, lineKey, lineLabel, lineSuggestion, savedComparison, selectableLine, styleEffects, visibleLines, type DiffFilter } from '../interaction';
-  import { milestoneAction, reportedParents } from '../visual';
+  import { stepAction, reportedParents } from '../visual';
   import DiffLines from './DiffLines.svelte';
   import ChangeLens from './ChangeLens.svelte';
 
@@ -23,7 +23,8 @@
   const hunks = $derived(diffHunks(step.diff ?? ''));
   const truncated = $derived(isTruncatedDiff(step.diff ?? ''));
   const parents = $derived(reportedParents(step, steps));
-  const reason = $derived(step.explanation ?? step.why);
+  const reason = $derived(stepReason(step));
+  const observed = $derived(step.source === 'hook' && !step.explanation && !step.why);
   const nodeLabel = $derived(step.node_name === '@workflow' ? 'Current task' : step.node_name);
   let selectedHunk = $state({ stepId: '', index: 0 });
   const hunkIndex = $derived(selectedHunk.stepId === step.id ? Math.min(selectedHunk.index, Math.max(0, hunks.length - 1)) : 0);
@@ -60,9 +61,9 @@
   }
 </script>
 
-<section class="change-visual" aria-label="Selected change" data-testid="change-visual" data-visual-kind={file ? 'file' : 'milestone'}>
+<section class="change-visual" aria-label="Selected change" data-testid="change-visual" data-visual-kind={file ? 'file' : step.source === 'hook' ? 'activity' : step.action === 'decided' ? 'decision' : 'milestone'}>
   <header class="visual-heading">
-    <div class="action-state"><span class="action">{milestoneAction(step.action)}</span><span class="state" data-state={step.status}><span class="state-dot" aria-hidden="true"></span>{step.status === 'running' ? 'Running' : 'Ready'}</span></div>
+    <div class="action-state"><span class="action">{stepAction(step)}</span><span class="state" data-state={step.status}><span class="state-dot" aria-hidden="true"></span>{step.status === 'running' ? 'Running' : 'Ready'}</span></div>
     <h2 title={nodeLabel}>{nodeLabel}</h2>
     {#if !file}<p class="summary">{step.summary}</p>{/if}
   </header>
@@ -84,7 +85,8 @@
       </div>
     {:else}
       <div class="milestone-symbol" aria-hidden="true">
-        {#if step.action === 'scouted'}<svg viewBox="0 0 64 64"><circle cx="27" cy="27" r="15" /><path d="m38 38 14 14M20 27h14m-7-7v14" /></svg>
+        {#if step.action === 'decided'}<svg viewBox="0 0 64 64"><path d="M32 8v18m0 0L15 40m17-14 17 14M9 40h12v15H9zM43 40h12v15H43z" /></svg>
+        {:else if step.action === 'scouted'}<svg viewBox="0 0 64 64"><circle cx="27" cy="27" r="15" /><path d="m38 38 14 14M20 27h14m-7-7v14" /></svg>
         {:else if step.action === 'tested'}<svg viewBox="0 0 64 64"><path d="M24 9h16M27 9v18L14 47a5 5 0 0 0 4 8h28a5 5 0 0 0 4-8L37 27V9M22 36h20" /><circle cx="28" cy="44" r="1" /><circle cx="37" cy="48" r="1" /></svg>
         {:else}<svg viewBox="0 0 64 64"><path d="m21 20-12 12 12 12m22-24 12 12-12 12M37 15 27 49" /></svg>{/if}
       </div>
@@ -92,7 +94,7 @@
   {/if}
 
   <div class="visual-reason" aria-label="Why this change">
-    <span class="section-label">Why</span><p>{reason || (step.explanation_pending ? 'The agent hasn’t explained this save yet.' : 'No explanation was supplied for this step.')}</p>
+    <span class="section-label">{observed ? 'Observed' : 'Why'}</span><p>{reason}</p>
   </div>
 
   {#if effect}

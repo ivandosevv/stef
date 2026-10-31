@@ -11,7 +11,7 @@
   import { hasFileDiff } from './diff';
   import { isWorkspaceList } from './stream-security';
   import { connectStream, isEmbedded, sendToHost } from './transport';
-  import { workflowSteps, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode, type Workspace, type StreamMessage } from './lib';
+  import { stepReason, workflowWindows, mergeEvents, shortName, isUpdateMode, type AgentEvent, type UpdateMode, type Workspace, type StreamMessage } from './lib';
 
   let events = $state<AgentEvent[]>([]);
   let session = $state('');
@@ -228,8 +228,9 @@
         }
         if (changed) { selected = localStorage.getItem(selectionKey()); note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetRequests(); resetFollow(); showHistory = localStorage.getItem(historyKey()) === 'true'; }
         else if (windowChanged) toggleHistory(false);
-        if (!workflowSteps(events).some(step => step.id === selected)) { selected = null; requestStatus = ''; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetFollow(); rememberSelection(); }
-        if (resumed && selected && !workflowWindows(events, updateMode, updatesFrom).current.some(step => step.id === selected)) toggleHistory(true);
+        const restoredWindows = workflowWindows(events, updateMode, updatesFrom);
+        if (![...restoredWindows.saved, ...restoredWindows.current].some(step => step.id === selected)) { selected = null; requestStatus = ''; note = ''; noteStatus = ''; noteOpen = false; typing = false; diffOpen = false; resetFollow(); rememberSelection(); }
+        if (resumed && selected && !restoredWindows.current.some(step => step.id === selected)) toggleHistory(true);
         if (changed) {
           if (selected) reveal = { id: selected, version: ++revealVersion };
           else pendingFollow = workflowWindows(events, updateMode, updatesFrom).current.at(-1)?.id ?? null;
@@ -293,7 +294,7 @@
         {#if design === 'minimal'}
         <section class="step-detail" aria-label="Why this step">
           {#if shared}<small class="contributor">{step.agent_id === 'filesystem' ? 'Observed file change' : step.agent_id}</small>{/if}
-          <p>{step.why || (step.source === 'watcher' ? 'The agent hasn’t explained this save yet.' : 'The agent hasn’t explained this step yet.')}</p>
+          <p>{step.why || stepReason(step)}</p>
           <small class="file" title={step.node_name}>{step.node_name === '@workflow' ? 'Current task' : step.node_name}</small>
           {#if step.explanation_pending}
             <button class="request-explanation" onclick={askContext} disabled={!connected || asking || Boolean(chosenRequest)}>{asking || chosenRequest ? 'Request queued' : 'Request explanation'}</button>
